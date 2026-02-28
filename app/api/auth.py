@@ -61,9 +61,8 @@ async def get_auth_status(
     current_user: User = Depends(get_current_user)
 ):
     """
-    현재 토큰의 유효성 및 기기 인증 상태를 확인합니다.
-    get_current_user에서 is_verified 체크를 수행하므로, 
-    여기까지 도달했다면 인증된 상태입니다.
+    기기 인증: 인증된 사원(is_verified)은 기간 관계없이 2차 인증 없이 패스.
+    사원관리에서 '기기 초기화'한 경우(is_verified=False)만 재로그인 필요.
     """
     return {
         "status": "authenticated",

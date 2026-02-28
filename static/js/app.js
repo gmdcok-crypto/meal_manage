@@ -7,35 +7,32 @@ const app = {
     },
 
     async init() {
-        // 정식 배포 환경: 항상 로그인 화면을 먼저 보여 준 뒤, 서버 검증 결과에만 따라 홈 전환
-        this.showPage('page-login');
-
+        // 기기 인증된 사용자: 토큰 있으면 검사만 하고 로그인 화면 없이 바로 홈
         var token = localStorage.getItem('meal_token');
-        if (!token) {
-            return;
-        }
-
-        try {
-            var res = await fetch('/api/auth/status?_=' + Date.now(), {
-                cache: 'no-store',
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-
-            if (res.ok) {
-                var userStr = localStorage.getItem('meal_user');
-                if (userStr) {
-                    this.state.user = JSON.parse(userStr);
-                    this.state.isLoggedIn = true;
-                    this.updateUserInfoUI();
-                    this.showPage('page-home');
-                    return;
+        if (token) {
+            try {
+                var res = await fetch('/api/auth/status?_=' + Date.now(), {
+                    cache: 'no-store',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                if (res.ok) {
+                    var userStr = localStorage.getItem('meal_user');
+                    if (userStr) {
+                        this.state.user = JSON.parse(userStr);
+                        this.state.isLoggedIn = true;
+                        this.updateUserInfoUI();
+                        this.showPage('page-home');
+                        return;
+                    }
                 }
+            } catch (e) {
+                console.error("Auth status check failed:", e);
             }
             this.logout();
-        } catch (e) {
-            console.error("Auth status check failed:", e);
-            this.logout();
+            return;
         }
+        // 인증 안 된 사용자: 최초 1회만 로그인 화면 표시
+        this.showPage('page-login');
     },
 
     updateUserInfoUI() {
