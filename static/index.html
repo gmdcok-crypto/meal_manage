@@ -49,6 +49,13 @@
                 <h1 id="user-name" class="user-name-display">홍길동 님</h1>
                 <p id="user-dept" class="user-dept-display">솔루션개발팀</p>
                 <p class="home-tagline">맛과 영양으로 보답하는 한 끼가 되겠습니다.</p>
+                <div id="install-banner" class="install-banner install-banner--below-tagline" style="display: none;">
+                    <p>홈 화면에 추가하면 앱처럼 편하게 사용할 수 있어요.</p>
+                    <div class="install-banner-btns">
+                        <button type="button" class="btn btn-sms" id="install-btn">추가하기</button>
+                        <button type="button" class="install-banner-close" id="install-banner-close" aria-label="닫기">×</button>
+                    </div>
+                </div>
             </div>
 
             <div class="home-spacer"></div>
@@ -127,6 +134,30 @@
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js?v=1');
         }
+        (function() {
+            if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
+            var banner = document.getElementById('install-banner');
+            if (!banner) return;
+            if (sessionStorage.getItem('install-banner-closed')) return;
+            banner.style.display = 'block';
+            document.getElementById('install-banner-close').onclick = function() {
+                banner.style.display = 'none';
+                sessionStorage.setItem('install-banner-closed', '1');
+            };
+            var installBtn = document.getElementById('install-btn');
+            installBtn.onclick = function() {
+                if (window.deferredPrompt) {
+                    window.deferredPrompt.prompt();
+                    window.deferredPrompt.userChoice.then(function() { banner.style.display = 'none'; });
+                } else {
+                    banner.innerHTML = '<p>브라우저 메뉴(⋮)에서 "홈 화면에 추가" 또는 "앱 설치"를 선택해 주세요.</p><button type="button" class="install-banner-close" onclick="this.closest(\'.install-banner\').style.display=\'none\'">×</button>';
+                }
+            };
+        })();
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            window.deferredPrompt = e;
+        });
     </script>
 </body>
 
