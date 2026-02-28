@@ -33,6 +33,11 @@
 | **SECRET_KEY** | 영문/숫자 조합 긴 문자열 (예: `my-super-secret-key-change-this-12345`) | ✅ |
 | **ENV** | `production` | 선택 (넣으면 reload 끔) |
 
+**⚠️ PC 앱에서 데이터가 안 보이면:** 웹 서비스에 **DATABASE_URL**이 없어서 백엔드가 localhost DB를 보는 상태입니다.  
+Railway MySQL 서비스의 **Variables**에서 연결 URL을 복사한 뒤, **웹 서비스(meal_manage)** 의 **Variables**에 **DATABASE_URL**로 추가하세요.  
+- **Railway 내부용**(웹 서비스→MySQL): `mysql+aiomysql://root:비밀번호@mysql.railway.internal:3306/railway`  
+- **앞부분만** `mysql://` → `mysql+aiomysql://` 로 바꾸면 됩니다.
+
 변수 추가/수정 후 **Redeploy** 한 번 하면 적용됨.
 
 ---

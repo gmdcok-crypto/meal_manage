@@ -65,12 +65,13 @@ app.include_router(meal.router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin")
 
 # static 파일 서빙 (PWA 프론트엔드용)
-_admin_dist = os.path.join(os.path.dirname(__file__), "static", "admin", "dist")
+_base = os.path.dirname(os.path.abspath(__file__))
+_admin_dist = os.path.join(_base, "static", "admin", "dist")
+_static_dir = os.path.join(_base, "static")
 if os.path.isdir(_admin_dist):
     app.mount("/admin", StaticFiles(directory=_admin_dist, html=True), name="admin")
-# (없으면 /admin 미서빙 - Railway 등에서 React 빌드 전에는 생략됨)
-
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+if os.path.isdir(_static_dir):
+    app.mount("/", StaticFiles(directory=_static_dir, html=True), name="static")
 
 @app.get("/api/health")
 async def health_check():

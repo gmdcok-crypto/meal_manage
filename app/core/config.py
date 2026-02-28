@@ -1,10 +1,23 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
+
+def _normalize_database_url(url: str) -> str:
+    """공백/줄바꿈 제거, mysql:// → mysql+aiomysql:// 변환"""
+    u = (url or "").strip().split("\n")[0].strip()
+    if u.startswith("mysql://") and not u.startswith("mysql+aiomysql://"):
+        u = "mysql+aiomysql://" + u[len("mysql://"):]
+    return u
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "PWA Meal Auth System"
     
     # Database
     DATABASE_URL: str = "mysql+aiomysql://root:700312ok!@localhost:3306/meal_db"
+    
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        return _normalize_database_url(v) if isinstance(v, str) else v
     
     # JWT
     SECRET_KEY: str = "your-secret-key-change-it-in-production"

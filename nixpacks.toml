@@ -1,7 +1,6 @@
-# Python + Node (admin 빌드용)
+# Python만 사용 (admin 빌드 제거 → 배포 오류 시 원인 확인용)
 [phases.setup]
-nixPkgs = ["...", "nodejs"]
+nixPkgs = ["..."]
 
-# Python 의존성 설치 후 React admin 빌드
 [phases.build]
-cmds = ["...", "cd static/admin && npm ci && npm run build"]
+cmds = ["..."]

@@ -11,52 +11,55 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/verify_device")
 async def verify_device(req: VerifyDeviceRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.emp_no == req.emp_no))
-    user = result.scalar_one_or_none()
-    
-    if not user or user.name != req.name:
-        raise HTTPException(status_code=400, detail="사번 또는 이름이 일치하지 않습니다.")
-    
-    # 비밀번호 자르기 (bcrypt 72바이트 제한 해결)
-    safe_password = (req.password or "")[:72]
-
-    # 비밀번호 로직 처리
-    if not user.is_verified:
-        # 최초 인증 시 (비밀번호 설정)
-        if not safe_password:
-            raise HTTPException(status_code=400, detail="최초 접속 시 비밀번호를 설정해야 합니다.")
-        user.password_hash = get_password_hash(safe_password)
-        user.is_verified = True
-    else:
-        # 이미 인증된 기기 (재로그인 시)
-        if not user.password_hash:
-            raise HTTPException(status_code=400, detail="기기 초기화된 사번입니다. 비밀번호를 다시 설정해 주세요.")
-        if not verify_password(safe_password, user.password_hash):
-            raise HTTPException(status_code=400, detail="이미 인증된 사번이거나 비밀번호가 일치하지 않습니다.")
-    
-    await db.commit()
-    await db.refresh(user)
-    
-    # WebSocket Broadcast (실패해도 인증 응답에는 영향 없음)
     try:
-        from app.api.websocket import manager
-        import asyncio
-        asyncio.create_task(manager.broadcast({
-            "type": "USER_VERIFIED",
-            "data": {"emp_no": user.emp_no, "name": user.name}
-        }))
-    except Exception:
-        pass
-    
-    access_token = create_access_token(subject=user.id)
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "name": user.name,
-            "emp_no": user.emp_no
+        result = await db.execute(select(User).where(User.emp_no == req.emp_no))
+        user = result.scalar_one_or_none()
+        
+        if not user or user.name != req.name:
+            raise HTTPException(status_code=400, detail="사번 또는 이름이 일치하지 않습니다.")
+        
+        safe_password = (req.password or "")[:72]
+
+        if not user.is_verified:
+            if not safe_password:
+                raise HTTPException(status_code=400, detail="최초 접속 시 비밀번호를 설정해야 합니다.")
+            user.password_hash = get_password_hash(safe_password)
+            user.is_verified = True
+        else:
+            if not user.password_hash:
+                raise HTTPException(status_code=400, detail="기기 초기화된 사번입니다. 비밀번호를 다시 설정해 주세요.")
+            if not verify_password(safe_password, user.password_hash):
+                raise HTTPException(status_code=400, detail="이미 인증된 사번이거나 비밀번호가 일치하지 않습니다.")
+        
+        await db.commit()
+        await db.refresh(user)
+        
+        try:
+            from app.api.websocket import manager
+            import asyncio
+            asyncio.create_task(manager.broadcast({
+                "type": "USER_VERIFIED",
+                "data": {"emp_no": user.emp_no, "name": user.name}
+            }))
+        except Exception:
+            pass
+        
+        access_token = create_access_token(subject=user.id)
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {"name": user.name, "emp_no": user.emp_no}
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        err_msg = traceback.format_exc()
+        print(err_msg)
+        raise HTTPException(
+            status_code=500,
+            detail=f"기기 인증 처리 중 오류: {str(e)}",
+        )
 
 @router.get("/status")
 async def get_auth_status(
