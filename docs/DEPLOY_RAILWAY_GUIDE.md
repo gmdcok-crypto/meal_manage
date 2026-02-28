@@ -132,6 +132,8 @@ python repair_db.py
 | **DATABASE_URL** | `mysql+aiomysql://root:비밀번호@호스트:포트/railway` | Railway MySQL **Public URL**을 사용. 앞부분을 `mysql+aiomysql://` 로 맞춤. (Private URL `mysql.railway.internal` 은 이름 해석이 안 되는 환경이 있음) |
 | **SECRET_KEY** | 영문·숫자 조합 긴 문자열 | JWT 등에 사용. 예: `my-super-secret-key-change-this-12345` |
 
+> **중요:** SECRET_KEY를 **한 번 설정한 뒤 바꾸지 마세요.** 값을 바꾸면 기존에 발급된 모든 토큰이 무효가 되어, 모든 사용자가 폰에서 재인증해야 합니다. 배포만 할 때는 SECRET_KEY를 건드리지 않으면 재인증이 뜨지 않습니다.
+
 ### 4.2 선택 변수
 
 | 변수명 | 값 | 설명 |

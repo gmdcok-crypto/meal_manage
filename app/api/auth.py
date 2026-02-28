@@ -21,11 +21,13 @@ async def verify_device(req: VerifyDeviceRequest, db: AsyncSession = Depends(get
         safe_password = (req.password or "")[:72]
 
         if not user.is_verified:
+            # 최초 인증: 비밀번호 저장, is_verified=True 로 설정
             if not safe_password:
                 raise HTTPException(status_code=400, detail="최초 접속 시 비밀번호를 설정해야 합니다.")
             user.password_hash = get_password_hash(safe_password)
             user.is_verified = True
         else:
+            # 이미 인증된 사용자(키 변경·토큰 만료 등으로 재로그인): 기존 비밀번호만 검증, DB는 수정하지 않음
             if not user.password_hash:
                 raise HTTPException(status_code=400, detail="기기 초기화된 사번입니다. 비밀번호를 다시 설정해 주세요.")
             if not verify_password(safe_password, user.password_hash):

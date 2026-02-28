@@ -7,9 +7,10 @@ const app = {
     },
 
     async init() {
-        // 기기 인증된 사용자: 토큰 있으면 검사만 하고 로그인 화면 없이 바로 홈
+        // 토큰이 있어도 서버 확인 전까지는 로그인 화면 유지 → 기존 화면 잠깐 보였다 사라지는 현상 방지
         var token = localStorage.getItem('meal_token');
         if (token) {
+            this.showPage('page-login'); // 확인 끝날 때까지 로그인 화면 표시
             try {
                 var res = await fetch('/api/auth/status?_=' + Date.now(), {
                     cache: 'no-store',
@@ -31,7 +32,6 @@ const app = {
             this.logout();
             return;
         }
-        // 인증 안 된 사용자: 최초 1회만 로그인 화면 표시
         this.showPage('page-login');
     },
 
