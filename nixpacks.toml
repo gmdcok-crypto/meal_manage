@@ -1,0 +1,7 @@
+# Python + Node (admin 빌드용)
+[phases.setup]
+nixPkgs = ["...", "nodejs"]
+
+# Python 의존성 설치 후 React admin 빌드
+[phases.build]
+cmds = ["...", "cd static/admin && npm ci && npm run build"]

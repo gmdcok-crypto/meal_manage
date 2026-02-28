@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from app.api import auth, meal, admin
 from app.core.database import engine, Base
@@ -64,7 +65,11 @@ app.include_router(meal.router, prefix="/api")
 app.include_router(admin.router, prefix="/api/admin")
 
 # static 파일 서빙 (PWA 프론트엔드용)
-app.mount("/admin", StaticFiles(directory="static/admin/dist", html=True), name="admin")
+_admin_dist = os.path.join(os.path.dirname(__file__), "static", "admin", "dist")
+if os.path.isdir(_admin_dist):
+    app.mount("/admin", StaticFiles(directory=_admin_dist, html=True), name="admin")
+# (없으면 /admin 미서빙 - Railway 등에서 React 빌드 전에는 생략됨)
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 @app.get("/api/health")
