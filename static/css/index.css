@@ -43,7 +43,7 @@ body {
     overflow-x: hidden;
 }
 
-/* 이미지처럼 배경 위 어두운 반투명 오버레이 */
+/* 이미지처럼 배경 위 어두운 반투명 오버레이 (투명하게) */
 body::before {
     content: '';
     position: fixed;
@@ -51,7 +51,7 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(15, 23, 42, 0.5);
+    background: rgba(15, 23, 42, 0.25);
     pointer-events: none;
     z-index: 0;
 }
