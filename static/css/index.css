@@ -2,9 +2,10 @@
     --primary-color: #00d2ff;
     --secondary-color: #3a7bd5;
     --bg-color: #0b0e14;
-    --card-bg: rgba(255, 255, 255, 0.05);
+    --card-bg: rgba(255, 255, 255, 0.08);
     --text-color: #ffffff;
-    --text-muted: #a0a0a0;
+    --text-muted: #e8e8e8;
+    --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 8px rgba(0, 0, 0, 0.6);
     --accent-red: #ff4b2b;
     --accent-green: #00f260;
 }
@@ -29,6 +30,25 @@ body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    position: relative;
+}
+
+/* 밝은 배경 이미지 위에서도 글자 읽기 쉽게 어두운 반투명 막 */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    z-index: 0;
+}
+
+body > .container {
+    position: relative;
+    z-index: 1;
 }
 
 .container {
@@ -43,14 +63,14 @@ body {
 
 /* Glassmorphism Card */
 .glass-card {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
     border-radius: 24px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
     padding: 24px;
     margin-bottom: 20px;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
 }
 
 /* Typography */
@@ -58,6 +78,8 @@ h1 {
     font-size: 26px;
     font-weight: 700;
     margin-bottom: 8px;
+    color: #fff;
+    text-shadow: var(--text-shadow);
 }
 
 /* PWA 홈: 사원 이름·부서(사번) 5pt 정도 확대 */
@@ -65,17 +87,21 @@ h1 {
     font-size: 33px;
     font-weight: 700;
     margin-bottom: 8px;
+    color: #fff;
+    text-shadow: var(--text-shadow);
 }
 .user-dept-display {
     font-size: 23px;
     color: var(--text-muted);
     line-height: 1.4;
+    text-shadow: var(--text-shadow);
 }
 
 p {
     font-size: 16px;
     color: var(--text-muted);
     line-height: 1.5;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 
 /* Buttons */
@@ -83,8 +109,8 @@ p {
     width: 100%;
     padding: 16px;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(0, 0, 0, 0.35);
     color: white;
     font-size: 16px;
     font-weight: 600;
@@ -92,7 +118,7 @@ p {
 }
 
 .input-field::placeholder {
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.7);
 }
 
 .input-field:focus {
@@ -113,6 +139,7 @@ p {
     align-items: center;
     justify-content: center;
     gap: 10px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .btn-primary {
@@ -130,9 +157,9 @@ p {
 }
 
 .btn-sms {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.4);
     color: white;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 /* Meal Items */
@@ -244,7 +271,8 @@ p {
 }
 
 .loading-text {
-    color: var(--text-muted);
+    color: #fff;
     font-size: 15px;
-    font-weight: 500;
+    font-weight: 600;
+    text-shadow: var(--text-shadow);
 }
