@@ -255,7 +255,17 @@ const app = {
 
 window.onload = () => app.init();
 
-// 뒤로가기·탭 복원 시 서버 재검증 (노멀 환경 동일)
+// 앱을 나갈 때 항상 로딩 화면으로 전환 → 다시 열면 복원 시 기존 화면(홈 등)이 잠깐 안 보이게
+document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+        app.showPage('page-loading');
+    }
+});
+window.addEventListener('pagehide', function () {
+    app.showPage('page-loading');
+});
+
+// 뒤로가기·탭 복원 시 서버 재검증
 window.addEventListener('pageshow', function (event) {
     if (event.persisted) {
         app.init();

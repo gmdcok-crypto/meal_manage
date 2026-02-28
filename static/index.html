@@ -17,8 +17,8 @@
 
 <body>
     <div class="container">
-        <!-- 0. 로딩: 토큰 있을 때 인증 확인 중 -->
-        <div id="page-loading" class="page">
+        <!-- 0. 로딩: 토큰 있을 때 인증 확인 중 / 복원 시 깜빡임 방지 -->
+        <div id="page-loading" class="page active">
             <div class="loading-box">
                 <div class="loading-spinner"></div>
                 <p class="loading-text">인증 확인 중...</p>
@@ -26,7 +26,7 @@
         </div>
 
         <!-- 1. 페이지: 로그인 -->
-        <div id="page-login" class="page active">
+        <div id="page-login" class="page">
             <div style="margin-top: 60px; text-align: center; margin-bottom: 40px;">
                 <div style="font-size: 40px; margin-bottom: 20px;">🍱</div>
                 <h1>식당 인증 시스템</h1>
