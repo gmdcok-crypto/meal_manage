@@ -18,7 +18,7 @@ async def verify_device(req: VerifyDeviceRequest, db: AsyncSession = Depends(get
         raise HTTPException(status_code=400, detail="사번 또는 이름이 일치하지 않습니다.")
     
     # 비밀번호 자르기 (bcrypt 72바이트 제한 해결)
-    safe_password = req.password[:72] if req.password else ""
+    safe_password = (req.password or "")[:72]
 
     # 비밀번호 로직 처리
     if not user.is_verified:
@@ -29,22 +29,24 @@ async def verify_device(req: VerifyDeviceRequest, db: AsyncSession = Depends(get
         user.is_verified = True
     else:
         # 이미 인증된 기기 (재로그인 시)
-        if not user.password_hash or not verify_password(safe_password, user.password_hash):
+        if not user.password_hash:
+            raise HTTPException(status_code=400, detail="기기 초기화된 사번입니다. 비밀번호를 다시 설정해 주세요.")
+        if not verify_password(safe_password, user.password_hash):
             raise HTTPException(status_code=400, detail="이미 인증된 사번이거나 비밀번호가 일치하지 않습니다.")
     
     await db.commit()
     await db.refresh(user)
     
-    # WebSocket Broadcast (실시간 갱신용)
-    from app.api.websocket import manager
-    import asyncio
-    asyncio.create_task(manager.broadcast({
-        "type": "USER_VERIFIED",
-        "data": {
-            "emp_no": user.emp_no,
-            "name": user.name
-        }
-    }))
+    # WebSocket Broadcast (실패해도 인증 응답에는 영향 없음)
+    try:
+        from app.api.websocket import manager
+        import asyncio
+        asyncio.create_task(manager.broadcast({
+            "type": "USER_VERIFIED",
+            "data": {"emp_no": user.emp_no, "name": user.name}
+        }))
+    except Exception:
+        pass
     
     access_token = create_access_token(subject=user.id)
     return {

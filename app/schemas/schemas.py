@@ -159,4 +159,4 @@ class TokenData(BaseModel):
 class VerifyDeviceRequest(BaseModel):
     emp_no: str
     name: str
-    password: str
+    password: Optional[str] = ""  # 최초 인증 시 필수, 재로그인 시 사용
