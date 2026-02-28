@@ -82,13 +82,37 @@ h1 {
     text-shadow: var(--text-shadow);
 }
 
-/* PWA 홈: 사원 이름·부서(사번) 5pt 정도 확대 */
+/* PWA 홈: 사원 이름 2pt 확대, 시간·요일 */
 .user-name-display {
-    font-size: 33px;
+    font-size: 35px;
     font-weight: 700;
     margin-bottom: 8px;
     color: #fff;
     text-shadow: var(--text-shadow);
+}
+
+.home-datetime {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    text-shadow: var(--text-shadow);
+}
+
+.home-header {
+    display: flex;
+    flex-direction: column;
+    margin-top: 20px;
+    margin-bottom: 16px;
+}
+
+.home-spacer {
+    flex: 1;
+    min-height: 24px;
+}
+
+.home-qr-card {
+    margin-top: auto;
 }
 .user-dept-display {
     font-size: 23px;

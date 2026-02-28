@@ -5,6 +5,7 @@ const app = {
         user: null,
         meal: null
     },
+    homeClockTimer: null,
 
     async init() {
         // 토큰이 있으면 로딩 화면 → 서버 확인 후 홈 또는 로그인 (깜빡임 방지)
@@ -45,8 +46,30 @@ const app = {
     },
 
     showPage(pageId) {
+        if (this.homeClockTimer) {
+            clearInterval(this.homeClockTimer);
+            this.homeClockTimer = null;
+        }
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.getElementById(pageId).classList.add('active');
+        if (pageId === 'page-home') {
+            this.startHomeClock();
+        }
+    },
+
+    startHomeClock() {
+        const el = document.getElementById('home-datetime');
+        if (!el) return;
+        const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+        const update = () => {
+            const now = new Date();
+            const h = now.getHours();
+            const m = now.getMinutes();
+            const day = weekDays[now.getDay()];
+            el.textContent = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + '(' + day + ')';
+        };
+        update();
+        this.homeClockTimer = setInterval(update, 1000);
     },
 
     async loginDevice() {
@@ -134,11 +157,8 @@ const app = {
             );
         } catch (err) {
             console.error("Camera error:", err);
-            if (confirm("보안 정책(HTTPS 미사용)으로 인해 카메라를 시작할 수 없습니다. \n\n카메라 없이 시뮬레이션으로 인증을 진행하시겠습니까?")) {
-                this.processQrAuth("SIMULATED_QR_DATA");
-            } else {
-                this.showPage('page-home');
-            }
+            alert("보안 정책(HTTPS 미사용)으로 인해 카메라를 시작할 수 없습니다. HTTPS 환경에서 다시 시도해 주세요.");
+            this.showPage('page-home');
         }
     },
 
@@ -255,10 +275,12 @@ const app = {
 
 window.onload = () => app.init();
 
-// 앱을 나갈 때 항상 로딩 화면으로 전환 → 다시 열면 복원 시 기존 화면(홈 등)이 잠깐 안 보이게
+// 앱을 나갈 때 로딩으로 전환, 다시 보일 때(잠금 해제 등) init 재실행
 document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
         app.showPage('page-loading');
+    } else {
+        app.init();
     }
 });
 window.addEventListener('pagehide', function () {

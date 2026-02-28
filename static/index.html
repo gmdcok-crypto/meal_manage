@@ -28,7 +28,6 @@
         <!-- 1. 페이지: 로그인 -->
         <div id="page-login" class="page">
             <div style="margin-top: 60px; text-align: center; margin-bottom: 40px;">
-                <div style="font-size: 40px; margin-bottom: 20px;">🍱</div>
                 <h1>식당 인증 시스템</h1>
                 <p>최초 1회만 기기 인증 후, 이후에는 이 기기에서 다시 인증하지 않습니다.</p>
             </div>
@@ -45,12 +44,15 @@
 
         <!-- 2. 페이지: 홈 -->
         <div id="page-home" class="page">
-            <div style="display: flex; flex-direction: column; margin-bottom: 24px; margin-top: 20px;">
+            <div class="home-header">
+                <div id="home-datetime" class="home-datetime">12:30(월)</div>
                 <h1 id="user-name" class="user-name-display">홍길동 님</h1>
                 <p id="user-dept" class="user-dept-display">솔루션개발팀</p>
             </div>
 
-            <div class="glass-card" style="margin-top: auto;">
+            <div class="home-spacer"></div>
+
+            <div class="glass-card home-qr-card">
                 <p style="text-align: center; margin-bottom: 12px;">현장에 도착하셨나요?</p>
                 <button class="btn btn-sms" onclick="app.openQrScanner()">현장 QR 스캔하기</button>
             </div>
@@ -105,10 +107,7 @@
                 style="width: 100%; max-width: 400px; margin: 0 auto; overflow: hidden; border-radius: 12px; border: 2px solid var(--accent-blue);">
             </div>
 
-            <button class="btn btn-sms" onclick="app.stopScanner().then(() => app.processQrAuth('SIMULATED_DATA'))"
-                style="margin-top: 20px; background: rgba(0, 122, 255, 0.2); border: 1px solid var(--accent-blue);">시뮬레이션으로
-                인증하기</button>
-            <button class="btn btn-secondary" onclick="app.closeScanner()" style="margin-top: 15px;">취소하고 돌아가기</button>
+            <button class="btn btn-secondary" onclick="app.closeScanner()" style="margin-top: 20px;">취소하고 돌아가기</button>
         </div>
     </div>
 
