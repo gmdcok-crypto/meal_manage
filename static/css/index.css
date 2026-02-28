@@ -106,6 +106,29 @@ h1 {
     margin-bottom: 16px;
 }
 
+.home-notice {
+    flex-shrink: 0;
+    margin-bottom: 16px;
+}
+
+.home-notice-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 10px;
+    text-shadow: var(--text-shadow);
+}
+
+.home-notice-content {
+    font-size: 14px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    max-height: 8.5em;   /* 5줄 보이게 (line-height 1.5 × 5줄 + 여유) */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 .home-spacer {
     flex: 1;
     min-height: 24px;
@@ -113,12 +136,23 @@ h1 {
 
 .home-qr-card {
     margin-top: auto;
+    margin-bottom: 0;
+    flex-shrink: 0;
 }
 .user-dept-display {
     font-size: 23px;
     color: var(--text-muted);
     line-height: 1.4;
     text-shadow: var(--text-shadow);
+}
+
+.home-tagline {
+    font-size: 17px;
+    color: var(--text-muted);
+    opacity: 0.9;
+    margin-top: 12px;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 p {
@@ -267,6 +301,8 @@ p {
 .page.active {
     display: flex;
     flex-direction: column;
+    flex: 1;
+    min-height: 0;
 }
 
 /* 인증 확인 로딩 */
