@@ -43,6 +43,19 @@ body {
     overflow-x: hidden;
 }
 
+/* 이미지처럼 배경 위 어두운 반투명 오버레이 */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.5);
+    pointer-events: none;
+    z-index: 0;
+}
+
 h1, h2, h3 {
     font-weight: 700;
     letter-spacing: -0.025em;
@@ -58,10 +71,10 @@ h1, h2, h3 {
 
 .glass-card,
 .card {
-    background: rgba(15, 23, 42, 0.75);
+    background: rgba(15, 23, 42, 0.78);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 24px;
     border: 1px solid var(--glass-border);
     transition: transform 0.2s ease, border-color 0.2s ease;
@@ -74,6 +87,8 @@ h1, h2, h3 {
 
 /* 컨테이너: 백엔드 main과 동일 p-8 */
 .container {
+    position: relative;
+    z-index: 1;
     width: 100%;
     max-width: 480px;
     margin: 0 auto;
@@ -266,51 +281,65 @@ p {
 
 .home-header-left .home-datetime {
     color: var(--text-muted);
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 500;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
 }
 
 .home-header-left .user-name-display {
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
+    color: var(--text-main);
     margin-bottom: 4px;
 }
 
 .home-header-left .user-dept-display {
-    color: var(--text-muted);
-    font-size: 14px;
+    color: var(--text-main);
+    font-size: 15px;
     font-weight: 500;
     margin-bottom: 8px;
+    opacity: 0.95;
 }
 
 .home-header-left .home-tagline {
     color: var(--text-muted);
-    font-size: 13px;
-    margin-top: 4px;
+    font-size: 14px;
+    margin-top: 2px;
 }
 
-/* 설치 배너: 태그라인 아래 */
+/* 설치 배너: 태그라인 아래, 이미지처럼 더 어두운 카드 */
 .install-banner {
     width: 100%;
     margin-top: 12px;
-    padding: 12px 16px;
-    background: var(--glass-bg);
+    padding: 14px 18px;
+    background: rgba(15, 23, 42, 0.9);
     border: 1px solid var(--glass-border);
-    border-radius: 12px;
+    border-radius: 16px;
     font-size: 13px;
     color: var(--text-muted);
 }
 
 .install-banner p {
-    margin-bottom: 8px;
-    font-size: 13px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: var(--text-main);
 }
 
 .install-banner-btns {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+}
+
+/* 이미지처럼 추가하기 = 흰색 버튼 + 진한 글자 */
+.install-banner .btn,
+#install-btn {
+    background: #ffffff !important;
+    color: #1e293b !important;
+    border: none !important;
+    width: auto !important;
+    min-width: 100px;
+    padding: 10px 18px;
 }
 
 .install-banner-close {
@@ -353,10 +382,18 @@ p {
     line-height: 1.6;
 }
 
-/* QR 카드: 화면 맨 아래 고정 */
+/* QR 카드: 화면 맨 아래 고정, 이미지처럼 큰 어두운 버튼 */
 .home-qr-card.card {
     margin-top: auto;
     margin-bottom: 0;
+}
+
+.home-qr-card .btn {
+    padding: 16px 24px;
+    font-size: 17px;
+    border-radius: 12px;
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255,255,255,0.15);
 }
 
 /* 로딩 */
