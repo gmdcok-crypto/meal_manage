@@ -69,7 +69,10 @@ async def process_qr_scan(
     policy = rows[0] if rows else None
 
     if not policy:
-        raise HTTPException(status_code=400, detail="현재 식사 시간이 아니거나 설정된 식사 정책이 없습니다.")
+        raise HTTPException(
+            status_code=400,
+            detail="식사 시간이 아닙니다. 식사 정책에 안내된 식사 시간에 이용해 주세요."
+        )
 
     new_log = MealLog(
         user_id=current_user.id,

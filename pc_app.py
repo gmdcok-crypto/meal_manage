@@ -1,5 +1,4 @@
 import sys
-import os
 import warnings
 # Suppress PyQt5 sip deprecation warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*sipPyTypeDict.*")
@@ -17,14 +16,9 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QTime, QDate, QByteArray
 from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap
 
-# --- Config (기본: Railway 배포 주소. 로컬 개발 시 MEAL_API_BASE_URL=http://localhost:8000/api/admin 설정) ---
-from urllib.parse import urlparse
-_DEFAULT_RAILWAY = "https://web-production-e758d.up.railway.app"
-_API_BASE = os.environ.get("MEAL_API_BASE_URL", f"{_DEFAULT_RAILWAY}/api/admin")
-API_BASE_URL = _API_BASE.rstrip("/")
-parsed = urlparse(_API_BASE)
-_ws_scheme = "wss" if parsed.scheme == "https" else "ws"
-WS_URL = f"{_ws_scheme}://{parsed.netloc}/api/admin/ws"
+# --- Config (override via env or edit for deployment) ---
+API_BASE_URL = "http://localhost:8000/api/admin"
+WS_URL = "ws://localhost:8000/api/admin/ws"
 API_TIMEOUT = 10.0
 
 # --- WebSocket Client Thread ---
@@ -247,16 +241,15 @@ def setup_standard_table(table):
 class APIClient:
     def __init__(self, base_url=None):
         self.base_url = base_url or API_BASE_URL
-        self._last_error = None
         self.client = httpx.Client(timeout=API_TIMEOUT)
 
     def get_stats(self):
         try:
             r = self.client.get(f"{self.base_url}/stats/today")
             return r.json() if r.status_code == 200 else None
-        except Exception as e:
-            self._last_error = str(e)
+        except Exception:
             return None
+
 
     def get_raw_data(self, search="", start_date=None, end_date=None):
         try:
@@ -267,10 +260,8 @@ class APIClient:
                 params["end_date"] = end_date
             r = self.client.get(f"{self.base_url}/raw-data", params=params)
             return r.json() if r.status_code == 200 else []
-        except Exception as e:
-            self._last_error = str(e)
+        except Exception:
             return []
-
 
     def create_manual_raw_data(self, data):
         try:
@@ -317,9 +308,8 @@ class APIClient:
         try:
             r = self.client.get(f"{self.base_url}/companies")
             return r.json() if r.status_code == 200 else []
-        except Exception as e:
-            self._last_error = str(e)
-            return None  # None = 연결 실패, [] = 데이터 없음
+        except Exception:
+            return []
 
     def create_company(self, code, name):
         try:
@@ -546,11 +536,6 @@ class DashboardScreen(QWidget):
     def update_stats(self, stats):
         if not stats or not isinstance(stats, dict): return
         
-        err = stats.get("_error")
-        if err:
-            self._rebuild_cards([{"title": "서버 연결 실패", "val": err[:80], "color": "#ef4444", "icon": "⚠️"}])
-            return
-        
         # Define card data to build
         # Order: Total -> Meal Summaries (Policies) -> Exception
         card_data = []
@@ -683,13 +668,6 @@ class CompanyScreen(QWidget):
 
     def display_data(self, data):
         QApplication.restoreOverrideCursor()
-        if data is None:
-            QMessageBox.warning(
-                self.main_win,
-                "연결 실패",
-                f"서버에 연결할 수 없습니다.\n{getattr(self.api, '_last_error', '')}"
-            )
-            return
         if not isinstance(data, list): return
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
@@ -2381,14 +2359,6 @@ class MainWindow(QMainWindow):
         self.company_sync_loader.start()
 
     def on_company_sync_finished(self, data):
-        if data is None:
-            err = getattr(self.api, "_last_error", "") or "알 수 없는 오류"
-            QMessageBox.warning(
-                self,
-                "서버 연결 실패",
-                f"Railway 서버에 연결할 수 없습니다.\n\n연결 주소: {self.api.base_url}\n\n오류: {err}\n\n• 인터넷 연결과 Railway 서버 상태를 확인하세요.\n• 로컬에서 백엔드를 쓰려면 환경변수 MEAL_API_BASE_URL=http://localhost:8000/api/admin 로 설정 후 실행하세요."
-            )
-            return
         if isinstance(data, list):
             self.companies_data = data
             self.departments.update_company_combo(self.companies_data)
@@ -2425,13 +2395,6 @@ class MainWindow(QMainWindow):
         elif idx == 4: # RawDataScreen
             pass # Explicit search only
     def display_stats(self, stats):
-        if stats is None:
-            self.dashboard.update_stats({
-                "total_count": 0, "employee_count": 0, "guest_count": 0,
-                "exception_count": 0, "meal_summaries": [],
-                "_error": getattr(self.api, "_last_error", "서버 연결 실패")
-            })
-            return
         if stats and isinstance(stats, dict):
             # Dynamic stats update
             self.dashboard.update_stats(stats)

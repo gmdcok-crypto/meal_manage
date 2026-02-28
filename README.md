@@ -64,6 +64,11 @@ Antigravity AI에서 Cursor로 이관한 프로젝트입니다.
 
   → http://localhost:8000 (PWA), http://localhost:8000/admin (관리자)
 
+- **화면 미리보기 (로컬 ↔ Railway)**  
+  PWA 화면은 `static/`(index.html, css, js) 한 세트만 사용합니다.  
+  **로컬**: `python main.py` 후 브라우저에서 http://localhost:8000 으로 확인 → 수정 후 새로고침으로 바로 반영.  
+  **백엔드(Railway)**: 로컬에서 화면 확인이 끝나면 그때 **한 번만** `git add` → `git commit` → `git push` 하면 Railway에 동일 화면이 적용됩니다. 매번 푸시하지 않고, 로컬에서 괜찮을 때만 푸시하면 됩니다.
+
 - **PC 관리자 앱**
 
   ```bash
