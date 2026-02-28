@@ -102,11 +102,7 @@ const app = {
     },
 
     preCheck() {
-        this.state.preChecked = true;
-        document.getElementById('status-badge').style.display = 'block';
-        document.getElementById('btn-pre-check').textContent = "이미 체크되었습니다";
-        document.getElementById('btn-pre-check').disabled = true;
-        alert("오늘의 식사가 사전 체크되었습니다. 식당에서 QR을 찍어주세요.");
+        // 사전체크 UI 제거됨 (기능 유지만)
     },
 
     async openQrScanner() {

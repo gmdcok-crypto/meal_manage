@@ -19,6 +19,11 @@
 
 body {
     background-color: var(--bg-color);
+    background-image: url('../images/background.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     color: var(--text-color);
     min-height: 100vh;
     display: flex;
@@ -53,6 +58,18 @@ h1 {
     font-size: 26px;
     font-weight: 700;
     margin-bottom: 8px;
+}
+
+/* PWA 홈: 사원 이름·부서(사번) 5pt 정도 확대 */
+.user-name-display {
+    font-size: 33px;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+.user-dept-display {
+    font-size: 23px;
+    color: var(--text-muted);
+    line-height: 1.4;
 }
 
 p {
