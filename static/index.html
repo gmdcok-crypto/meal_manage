@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>PWA 식당 인증 시스템</title>
+    <link rel="stylesheet" href="css/index.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0b0e14">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+</head>
+
+<body>
+    <div class="container">
+        <!-- 1. 페이지: 로그인 -->
+        <div id="page-login" class="page active">
+            <div style="margin-top: 60px; text-align: center; margin-bottom: 40px;">
+                <div style="font-size: 40px; margin-bottom: 20px;">🍱</div>
+                <h1>식당 인증 시스템</h1>
+                <p>소셜 계정 또는 문자로 인증 후<br>식당 서비스를 이용하세요.</p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <input type="text" id="login-emp-no" class="input-field" placeholder="사번 (권한이 없는 경우 연락주세요)">
+                <input type="text" id="login-name" class="input-field" placeholder="이름">
+                <input type="password" id="login-password" class="input-field" placeholder="초기 비밀번호 (기기 변경 시 필요)">
+                <p style="font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 4px;">* 최초 기기 인증 시
+                    비밀번호가 고정 설정됩니다.</p>
+                <button class="btn btn-primary" onclick="app.loginDevice()" style="margin-top: 10px;">기기 인증
+                    완료하기</button>
+            </div>
+        </div>
+
+        <!-- 2. 페이지: 홈 (식단 확인/사전체크) -->
+        <div id="page-home" class="page">
+            <div
+                style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 24px; margin-top: 20px;">
+                <div>
+                    <h1 id="user-name">홍길동 님</h1>
+                    <p id="user-dept">솔루션개발팀</p>
+                </div>
+                <div class="badge badge-arrived" id="status-badge" style="display: none;">사전 체크됨</div>
+            </div>
+
+            <div class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h2 style="font-size: 18px;">오늘의 식단</h2>
+                    <span style="font-size: 14px; opacity: 0.6;">02월 26일 (목)</span>
+                </div>
+
+                <div id="meal-list">
+                    <div class="meal-item">
+                        <div>
+                            <div style="font-weight: 600;">일반식 (A코너)</div>
+                            <div style="font-size: 13px; opacity: 0.6;">돈까스, 크림스프, 샐러드</div>
+                        </div>
+                        <div style="font-weight: 700;">6,500원</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-primary" id="btn-pre-check" onclick="app.preCheck()">오늘 점심 먹음 (사전체크)</button>
+                </div>
+            </div>
+
+            <div class="glass-card" style="margin-top: auto;">
+                <p style="text-align: center; margin-bottom: 12px;">현장에 도착하셨나요?</p>
+                <button class="btn btn-sms" onclick="app.openQrScanner()">현장 QR 스캔하기</button>
+            </div>
+        </div>
+
+        <!-- 3. 페이지: 인증 완료 화면 -->
+        <div id="page-auth-success" class="page"
+            style="position: relative; overflow: hidden; background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);">
+            <div class="auth-watermark">CERTIFIED</div>
+
+            <div style="z-index: 10; text-align: center; margin-top: 60px;">
+                <div style="font-size: 60px; margin-bottom: 20px;">✅</div>
+                <h1 style="font-size: 32px;">인증 완료</h1>
+                <p style="color: white; opacity: 0.8;">배식 담당자에게 이 화면을 보여주세요.</p>
+            </div>
+
+            <div class="glass-card" style="z-index: 10; margin-top: 40px; background: rgba(0,0,0,0.4);">
+                <div style="text-align: center;">
+                    <div id="auth-date" style="font-size: 18px; opacity: 0.9; margin-bottom: 4px;">2024년 02월 26일</div>
+                    <div id="auth-time" style="font-size: 44px; font-weight: 800; margin-bottom: 8px;">12:30:45</div>
+                    <div id="auth-countdown" style="font-size: 15px; color: #ffeb3b; font-weight: 600;">남은 시간 02:59
+                    </div>
+                </div>
+
+                <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span>사번</span>
+                        <span id="auth-emp-no" style="font-weight: 600;">20240101</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <span>이름/부서</span>
+                        <span id="auth-user-info" style="font-weight: 600;">홍길동 / 개발팀</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>인원</span>
+                        <span style="font-weight: 800; color: var(--accent-green);">본인 1명</span>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-sms" onclick="app.goHome()" style="margin-top: auto; z-index: 10;">확인 완료</button>
+        </div>
+
+        <!-- 4. 페이지: QR 스캐너 -->
+        <div id="page-scanner" class="page">
+            <div style="margin-top: 40px; text-align: center; margin-bottom: 20px;">
+                <h1>QR 코드 스캔</h1>
+                <p>식당의 QR 코드를 사각형 안에 맞춰주세요.</p>
+            </div>
+
+            <div id="reader"
+                style="width: 100%; max-width: 400px; margin: 0 auto; overflow: hidden; border-radius: 12px; border: 2px solid var(--accent-blue);">
+            </div>
+
+            <button class="btn btn-sms" onclick="app.stopScanner().then(() => app.processQrAuth('SIMULATED_DATA'))"
+                style="margin-top: 20px; background: rgba(0, 122, 255, 0.2); border: 1px solid var(--accent-blue);">시뮬레이션으로
+                인증하기</button>
+            <button class="btn btn-secondary" onclick="app.closeScanner()" style="margin-top: 15px;">취소하고 돌아가기</button>
+        </div>
+    </div>
+
+    <!-- 배포 시 새 버전이면 ?v= 숫자만 올려서 캐시 갱신 -->
+    <script src="js/app.js?v=1"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js?v=1');
+        }
+    </script>
+</body>
+
+</html>
