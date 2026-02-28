@@ -585,11 +585,19 @@ class DashboardScreen(QWidget):
         self.recent_table.setRowCount(len(data))
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
-            ts = row.get("created_at", "").split("T")[-1][:5]
-            self.recent_table.setItem(i, 0, QTableWidgetItem(ts))
-            self.recent_table.setItem(i, 1, QTableWidgetItem(str(row.get("user", {}).get("name", ""))))
-            self.recent_table.setItem(i, 2, QTableWidgetItem(str(row.get("user", {}).get("department_name", ""))))
-            self.recent_table.setItem(i, 3, QTableWidgetItem(str(row.get("policy", {}).get("meal_type", ""))))
+            user = row.get("user") or {}
+            policy = row.get("policy") or {}
+            ts = row.get("created_at", "")
+            if isinstance(ts, str) and "T" in ts:
+                ts = ts.split("T")[-1][:8]  # HH:MM:SS
+            elif isinstance(ts, str):
+                ts = ts.split(" ")[-1][:8] if " " in ts else ts[:8]  # "YYYY-MM-DD HH:MM:SS"
+            else:
+                ts = str(ts)[:8] if ts else ""
+            self.recent_table.setItem(i, 0, QTableWidgetItem(ts[:5] if len(ts) >= 5 else ts))
+            self.recent_table.setItem(i, 1, QTableWidgetItem(str(user.get("name", ""))))
+            self.recent_table.setItem(i, 2, QTableWidgetItem(str(user.get("department_name", ""))))
+            self.recent_table.setItem(i, 3, QTableWidgetItem(str(policy.get("meal_type", ""))))
         self.recent_table.setUpdatesEnabled(True)
         self.recent_table.setSortingEnabled(True)
 
@@ -2398,13 +2406,21 @@ class MainWindow(QMainWindow):
         if stats and isinstance(stats, dict):
             # Dynamic stats update
             self.dashboard.update_stats(stats)
-            self.load_recent_logs()
+            # 테이블도 서버가 통계 낸 날짜로 조회 (타임존/날짜 불일치 방지)
+            self.load_recent_logs(stats.get("date"))
 
-    def load_recent_logs(self):
+    def load_recent_logs(self, date_value=None):
         if hasattr(self, 'recent_loader') and self.recent_loader.isRunning():
             return
-        today_str = date.today().strftime("%Y-%m-%d")
-        self.recent_loader = DataLoader(self.api.get_raw_data, "", today_str, today_str) # Today only
+        # 서버 stats의 date 사용 (없으면 로컬 오늘)
+        if date_value:
+            if hasattr(date_value, 'strftime'):
+                day_str = date_value.strftime("%Y-%m-%d")
+            else:
+                day_str = str(date_value)[:10]
+        else:
+            day_str = date.today().strftime("%Y-%m-%d")
+        self.recent_loader = DataLoader(self.api.get_raw_data, "", day_str, day_str)
         self.recent_loader.finished.connect(self.on_recent_logs_finished)
         self.recent_loader.start()
 
