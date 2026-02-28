@@ -202,6 +202,12 @@ p {
     }
 }
 
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* PWA Splash/Hidden */
 .page {
     display: none;
@@ -210,4 +216,30 @@ p {
 .page.active {
     display: flex;
     flex-direction: column;
+}
+
+/* 인증 확인 로딩 */
+.loading-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-height: 40vh;
+    gap: 16px;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.loading-text {
+    color: var(--text-muted);
+    font-size: 15px;
+    font-weight: 500;
 }

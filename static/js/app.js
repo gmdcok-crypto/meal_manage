@@ -7,10 +7,10 @@ const app = {
     },
 
     async init() {
-        // 토큰이 있어도 서버 확인 전까지는 로그인 화면 유지 → 기존 화면 잠깐 보였다 사라지는 현상 방지
+        // 토큰이 있으면 로딩 화면 → 서버 확인 후 홈 또는 로그인 (깜빡임 방지)
         var token = localStorage.getItem('meal_token');
         if (token) {
-            this.showPage('page-login'); // 확인 끝날 때까지 로그인 화면 표시
+            this.showPage('page-loading');
             try {
                 var res = await fetch('/api/auth/status?_=' + Date.now(), {
                     cache: 'no-store',
