@@ -219,6 +219,10 @@ p {
 }
 
 /* 인증 확인 로딩 */
+#page-loading {
+    background: transparent;
+}
+
 .loading-box {
     display: flex;
     flex-direction: column;
@@ -227,6 +231,7 @@ p {
     flex: 1;
     min-height: 40vh;
     gap: 16px;
+    background: transparent;
 }
 
 .loading-spinner {
