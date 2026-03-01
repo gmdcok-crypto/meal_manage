@@ -45,21 +45,44 @@ async def create_employee(
     operator_id: int = 1, # Placeholder for current user auth
     db: AsyncSession = Depends(get_db)
 ):
-    # Check if emp_no exists
+    # Check if emp_no already exists
     existing = await db.execute(select(User).where(User.emp_no == user_in.emp_no))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Employee number already exists")
-    
+    existing_user = existing.scalar_one_or_none()
+
+    if existing_user:
+        if existing_user.status == "RESIGNED":
+            # Re-register: update the resigned user (same emp_no, new company/dept/name)
+            existing_user.status = "ACTIVE"
+            existing_user.resigned_at = None
+            existing_user.company_id = user_in.company_id
+            existing_user.department_id = user_in.department_id
+            existing_user.name = user_in.name
+            existing_user.is_verified = False
+            existing_user.password_hash = None
+            await record_audit_log(
+                db, operator_id, "UPDATE", "employees", existing_user.id,
+                before_value={"status": "RESIGNED"},
+                after_value=user_in.dict(),
+                reason="Re-registration (was resigned)"
+            )
+            await db.commit()
+            result = await db.execute(
+                select(User).where(User.id == existing_user.id).options(joinedload(User.department_ref))
+            )
+            return result.scalar_one()
+        else:
+            raise HTTPException(status_code=400, detail="Employee number already exists")
+
     new_user = User(**user_in.dict())
     db.add(new_user)
     await db.flush() # Get ID
-    
+
     await record_audit_log(
         db, operator_id, "CREATE", "employees", new_user.id,
         after_value=user_in.dict(),
         reason="Manual registration"
     )
-    
+
     await db.commit()
     # Refresh with relationship
     result = await db.execute(
@@ -107,28 +130,40 @@ async def update_employee(
 @router.delete("/{user_id}")
 async def delete_employee_soft(
     user_id: int,
+    permanent: bool = Query(False, description="True면 DB에서 완전 삭제"),
     operator_id: int = 1, # Placeholder
     db: AsyncSession = Depends(get_db)
 ):
-    # Soft delete / Resignation treatment by default
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
-    
-    before_status = user.status
-    user.status = "RESIGNED"
-    user.resigned_at = datetime.now()
-    
-    await record_audit_log(
-        db, operator_id, "RESIGN", "employees", user.id,
-        before_value={"status": before_status},
-        after_value={"status": "RESIGNED"},
-        reason="Admin delete action"
-    )
-    
-    await db.commit()
-    return {"message": "Employee marked as resigned"}
+
+    if permanent:
+        # Hard delete: remove row from DB (same emp_no can be re-registered later)
+        await record_audit_log(
+            db, operator_id, "DELETE", "employees", user.id,
+            before_value={"emp_no": user.emp_no, "name": user.name, "status": user.status},
+            reason="Admin permanent delete"
+        )
+        await db.delete(user)
+        await db.commit()
+        return {"message": "Employee permanently deleted", "deleted": True}
+    else:
+        # Soft delete: mark as RESIGNED (default)
+        before_status = user.status
+        user.status = "RESIGNED"
+        user.resigned_at = datetime.now()
+
+        await record_audit_log(
+            db, operator_id, "RESIGN", "employees", user.id,
+            before_value={"status": before_status},
+            after_value={"status": "RESIGNED"},
+            reason="Admin delete action (soft)"
+        )
+
+        await db.commit()
+        return {"message": "Employee marked as resigned"}
 
 @router.post("/{user_id}/reset-device")
 async def reset_device_auth(
@@ -179,35 +214,47 @@ async def import_employees_excel(
     result = await db.execute(select(Department).where(Department.company_id == company_id))
     existing_depts = {d.name: d.id for d in result.scalars().all()}
     
-    # 2. Get all existing emp_no
-    result = await db.execute(select(User.emp_no))
-    existing_emp_nos = set(result.scalars().all())
-    
+    # 2. Get existing users by emp_no for skip/re-register
+    result = await db.execute(select(User))
+    all_users = result.scalars().all()
+    users_by_emp_no = {u.emp_no: u for u in all_users}
+
     success_count = 0
     skip_count = 0
+    reregister_count = 0
     new_depts_count = 0
-    
+
     for _, row in df.iterrows():
         emp_no = str(row["사번"]).strip()
         name = str(row["성명"]).strip()
         dept_name = str(row["부서명"]).strip()
-        
-        if emp_no in existing_emp_nos:
-            skip_count += 1
-            continue
-            
-        # 3. Handle department
+
+        # 3. Handle department (for both new and re-register)
         if dept_name not in existing_depts:
-            # Create new department
             new_dept = Department(company_id=company_id, code=dept_name, name=dept_name)
             db.add(new_dept)
-            await db.flush() # Get ID
+            await db.flush()
             existing_depts[dept_name] = new_dept.id
             new_depts_count += 1
-            
         dept_id = existing_depts[dept_name]
-        
-        # 4. Create User
+
+        existing_user = users_by_emp_no.get(emp_no)
+        if existing_user:
+            if existing_user.status == "RESIGNED":
+                existing_user.status = "ACTIVE"
+                existing_user.resigned_at = None
+                existing_user.company_id = company_id
+                existing_user.department_id = dept_id
+                existing_user.name = name
+                existing_user.is_verified = False
+                existing_user.password_hash = None
+                reregister_count += 1
+                success_count += 1
+            else:
+                skip_count += 1
+            continue
+
+        # 4. Create new User
         new_user = User(
             emp_no=emp_no,
             name=name,
@@ -217,14 +264,15 @@ async def import_employees_excel(
             is_verified=False
         )
         db.add(new_user)
-        existing_emp_nos.add(emp_no)
+        users_by_emp_no[emp_no] = new_user
         success_count += 1
-        
+
     await db.commit()
-    
+
     return {
         "success_count": success_count,
         "skip_count": skip_count,
+        "reregister_count": reregister_count,
         "new_depts_count": new_depts_count,
-        "message": f"성공: {success_count}건, 건너뜀(중복): {skip_count}건, 신규 부서: {new_depts_count}건"
+        "message": f"성공: {success_count}건 (재등록: {reregister_count}건), 건너뜀(중복): {skip_count}건, 신규 부서: {new_depts_count}건"
     }

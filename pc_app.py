@@ -438,11 +438,14 @@ class APIClient:
             return (True, r.json()) if r.status_code == 200 else (False, r.json().get("detail", "수정 실패"))
         except Exception as e: return (False, str(e))
 
-    def delete_employee(self, emp_id):
+    def delete_employee(self, emp_id, permanent=False):
         try:
-            r = self.client.delete(f"{self.base_url}/employees/{emp_id}")
+            # 서버가 bool 쿼리 파라미터를 확실히 인식하도록 1/0 사용
+            params = {"permanent": "1"} if permanent else {}
+            r = self.client.delete(f"{self.base_url}/employees/{emp_id}", params=params)
             return r.status_code == 200
-        except: return False
+        except Exception:
+            return False
 
     def get_excel_report_data(self, year, month):
         try:
@@ -661,10 +664,13 @@ class CompanyScreen(QWidget):
         selected = self.table.selectedItems()
         if selected:
             row = selected[0].row()
-            self.code_input.setText(self.table.item(row, 0).text())
-            self.name_input.setText(self.table.item(row, 1).text())
-            self.edit_btn.setEnabled(True)
-            self.del_btn.setEnabled(True)
+            item0 = self.table.item(row, 0)
+            item1 = self.table.item(row, 1)
+            self.code_input.setText(item0.text() if item0 else "")
+            self.name_input.setText(item1.text() if item1 else "")
+            cid = item0.data(Qt.UserRole) if item0 else None
+            self.edit_btn.setEnabled(cid is not None)
+            self.del_btn.setEnabled(cid is not None)
             self.name_input.setFocus()
             self.name_input.selectAll()
         else:
@@ -687,10 +693,12 @@ class CompanyScreen(QWidget):
         self.table.setRowCount(len(data))
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
-            item_code = QTableWidgetItem(row["code"])
-            item_code.setData(Qt.UserRole, row["id"])
+            code = row.get("code", "")
+            name = row.get("name", "")
+            item_code = QTableWidgetItem(str(code))
+            item_code.setData(Qt.UserRole, row.get("id"))
             self.table.setItem(i, 0, item_code)
-            self.table.setItem(i, 1, QTableWidgetItem(row["name"]))
+            self.table.setItem(i, 1, QTableWidgetItem(str(name)))
         self.table.setUpdatesEnabled(True)
         self.table.setSortingEnabled(True)
 
@@ -706,9 +714,10 @@ class CompanyScreen(QWidget):
         if not selected:
             QMessageBox.warning(self, "경고", "수정할 회사를 선택하세요.")
             return
-        
+
         row = selected[0].row()
-        cid = self.table.item(row, 0).data(Qt.UserRole)
+        item0 = self.table.item(row, 0)
+        cid = item0.data(Qt.UserRole) if item0 else None
         if cid is None:
             QMessageBox.warning(self, "경고", "선택한 항목을 수정할 수 없습니다.")
             return
@@ -728,9 +737,11 @@ class CompanyScreen(QWidget):
             selected = self.table.selectedItems()
             if selected:
                 row = selected[0].row()
-                self.table.setItem(row, 0, QTableWidgetItem(data["code"]))
-                self.table.item(row, 0).setData(Qt.UserRole, data["id"])
-                self.table.setItem(row, 1, QTableWidgetItem(data["name"]))
+                item0 = self.table.item(row, 0)
+                if item0 is not None:
+                    self.table.setItem(row, 0, QTableWidgetItem(data.get("code", "")))
+                    self.table.item(row, 0).setData(Qt.UserRole, data.get("id"))
+                self.table.setItem(row, 1, QTableWidgetItem(str(data.get("name", ""))))
             self.main_win.on_company_changed()
             QMessageBox.information(self, "성공", "수정되었습니다.")
             self.clear_inputs()
@@ -742,13 +753,15 @@ class CompanyScreen(QWidget):
         if not selected:
             QMessageBox.warning(self, "경고", "삭제할 회사를 선택하세요.")
             return
-            
+
         row = selected[0].row()
-        cid = self.table.item(row, 0).data(Qt.UserRole)
+        item0 = self.table.item(row, 0)
+        item1 = self.table.item(row, 1)
+        cid = item0.data(Qt.UserRole) if item0 else None
         if cid is None:
             QMessageBox.warning(self, "경고", "선택한 항목을 삭제할 수 없습니다.")
             return
-        name = self.table.item(row, 1).text()
+        name = item1.text() if item1 else "(선택 행)"
         
         reply = QMessageBox.question(self, "삭제 확인", f"'{name}' 회사를 정말 삭제하시겠습니까?\n관련 부서 및 사원 데이터에 영향을 줄 수 있습니다.",
                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -806,16 +819,16 @@ class CompanyScreen(QWidget):
         success, data = result if isinstance(result, tuple) else (False, str(result))
         if success and isinstance(data, dict):
             self.main_win.statusBar().showMessage("회사가 등록되었습니다.", 3000)
-            # Find the pending row and update it
             for i in range(self.table.rowCount()):
-                if self.table.item(i, 0).data(Qt.UserRole) is None:
-                    self.table.item(i, 0).setData(Qt.UserRole, data["id"])
+                item0 = self.table.item(i, 0)
+                if item0 is not None and item0.data(Qt.UserRole) is None:
+                    item0.setData(Qt.UserRole, data.get("id"))
                     break
             self.main_win.on_company_changed()
             QMessageBox.information(self, "성공", "등록되었습니다.")
             self.clear_inputs()
         else:
-            self.load_data() # Rollback on failure
+            self.load_data()
             msg = data if isinstance(data, str) else "등록 실패"
             QMessageBox.warning(self, "오류", f"등록에 실패했습니다: {msg}")
 
@@ -881,20 +894,26 @@ class DepartmentScreen(QWidget):
         selected = self.table.selectedItems()
         if selected:
             row = selected[0].row()
-            comp_id = self.table.item(row, 0).data(Qt.UserRole + 1)
-            if comp_id:
+            item0 = self.table.item(row, 0)
+            comp_id = item0.data(Qt.UserRole + 1) if item0 else None
+            if comp_id is not None:
                 idx = self.company_combo.findData(comp_id)
-                if idx >= 0: self.company_combo.setCurrentIndex(idx)
-            self.code_input.setText(self.table.item(row, 1).text())
-            self.name_input.setText(self.table.item(row, 2).text())
-            self.edit_btn.setEnabled(True)
-            self.del_btn.setEnabled(True)
+                if idx >= 0:
+                    self.company_combo.setCurrentIndex(idx)
+            item1 = self.table.item(row, 1)
+            item2 = self.table.item(row, 2)
+            self.code_input.setText(item1.text() if item1 else "")
+            self.name_input.setText(item2.text() if item2 else "")
+            dept_id = item0.data(Qt.UserRole) if item0 else None
+            self.edit_btn.setEnabled(dept_id is not None)
+            self.del_btn.setEnabled(dept_id is not None)
             self.name_input.setFocus()
             self.name_input.selectAll()
         else:
             self.code_input.clear()
             self.name_input.clear()
-
+            self.edit_btn.setEnabled(False)
+            self.del_btn.setEnabled(False)
     def clear_inputs(self):
         self.code_input.clear()
         self.name_input.clear()
@@ -916,9 +935,20 @@ class DepartmentScreen(QWidget):
         if cid is None:
             self.table.setRowCount(0)
             return
-            
-        # Optimization: Use local cache from main window
-        dept_list = [d for d in self.main_win.departments_data if d.get("company_id") == cid]
+
+        try:
+            cid_int = int(cid)
+        except (TypeError, ValueError):
+            cid_int = None
+        if cid_int is None:
+            self.table.setRowCount(0)
+            return
+
+        # Optimization: Use local cache from main window (match company_id as int)
+        dept_list = [
+            d for d in self.main_win.departments_data
+            if isinstance(d, dict) and d.get("company_id") is not None and int(d.get("company_id")) == cid_int
+        ]
         self.display_data(dept_list)
 
     def display_data(self, data):
@@ -927,20 +957,22 @@ class DepartmentScreen(QWidget):
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(data))
-        
+
         # Create mapping for company names
         comp_map = {c["id"]: c["name"] for c in self.main_win.companies_data if isinstance(c, dict)}
-        
+
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
-            cid = row["company_id"]
-            comp_name = comp_map.get(cid, str(cid))
+            cid = row.get("company_id")
+            comp_name = comp_map.get(cid, str(cid)) if cid is not None else ""
             item_comp = QTableWidgetItem(comp_name)
-            item_comp.setData(Qt.UserRole, row["id"]) # Dept ID
-            item_comp.setData(Qt.UserRole + 1, cid)   # Comp ID
+            item_comp.setData(Qt.UserRole, row.get("id"))
+            item_comp.setData(Qt.UserRole + 1, cid)
             self.table.setItem(i, 0, item_comp)
-            self.table.setItem(i, 1, QTableWidgetItem(row["code"]))
-            self.table.setItem(i, 2, QTableWidgetItem(row["name"]))
+            code = row.get("code")
+            name = row.get("name")
+            self.table.setItem(i, 1, QTableWidgetItem(str(code) if code is not None else ""))
+            self.table.setItem(i, 2, QTableWidgetItem(str(name) if name is not None else ""))
         self.table.setUpdatesEnabled(True)
         self.table.setSortingEnabled(True)
 
@@ -991,7 +1023,8 @@ class DepartmentScreen(QWidget):
         if did is None:
             QMessageBox.warning(self, "경고", "선택한 항목을 삭제할 수 없습니다.")
             return
-        name = self.table.item(row, 2).text()
+        name_item = self.table.item(row, 2)
+        name = name_item.text() if name_item else "(선택 행)"
         
         reply = QMessageBox.question(self, "삭제 확인", f"'{name}' 부서를 정말 삭제하시겠습니까?",
                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
@@ -1054,17 +1087,12 @@ class DepartmentScreen(QWidget):
         success, data = result if isinstance(result, tuple) else (False, str(result))
         if success and isinstance(data, dict):
             self.main_win.statusBar().showMessage("부서가 등록되었습니다.", 3000)
-            # Add to local cache
             self.main_win.departments_data.append(data)
-            
-            for i in range(self.table.rowCount()):
-                if self.table.item(i, 0).data(Qt.UserRole) is None:
-                    self.table.item(i, 0).setData(Qt.UserRole, data["id"])
-                    break
+            # Refresh table from cache so all rows (existing + new) show code/name correctly (avoids sort/row glitches)
+            self.load_data()
             QMessageBox.information(self, "성공", "등록되었습니다.")
             self.clear_inputs()
         else:
-            # Refresh from server on failure to be sure
             self.main_win.sync_departments()
             msg = data if isinstance(data, str) else "등록 실패"
             QMessageBox.warning(self, "오류", f"등록에 실패했습니다: {msg}")
@@ -1131,11 +1159,18 @@ class EmployeeScreen(QWidget):
         self.edit_btn.setEnabled(False)
         self.edit_btn.clicked.connect(self.on_edit)
         
-        self.del_btn = QPushButton("삭제")
+        self.del_btn = QPushButton("삭제(퇴사)")
         self.del_btn.setObjectName("DangerBtn")
         self.del_btn.setFixedWidth(100)
         self.del_btn.setEnabled(False)
         self.del_btn.clicked.connect(self.on_delete)
+
+        self.permanent_del_btn = QPushButton("완전 삭제")
+        self.permanent_del_btn.setObjectName("DangerBtn")
+        self.permanent_del_btn.setFixedWidth(100)
+        self.permanent_del_btn.setEnabled(False)
+        self.permanent_del_btn.setToolTip("DB에서 제거하여 같은 사번으로 재등록 가능")
+        self.permanent_del_btn.clicked.connect(self.on_permanent_delete)
         
         self.reset_btn = QPushButton("기기 초기화")
         self.reset_btn.setObjectName("SecondaryBtn")
@@ -1155,13 +1190,14 @@ class EmployeeScreen(QWidget):
         reg_layout.addWidget(self.add_btn)
         reg_layout.addWidget(self.edit_btn)
         reg_layout.addWidget(self.del_btn)
+        reg_layout.addWidget(self.permanent_del_btn)
         reg_layout.addWidget(self.reset_btn)
         reg_layout.addWidget(self.import_btn)
         layout.addWidget(reg_frame)
 
-        # Table
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["사번", "회사", "이름", "부서", "인증"])
+        # Table (재직+퇴사 한 테이블, 상태 컬럼 추가)
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["사번", "회사", "이름", "부서", "인증", "상태"])
         setup_standard_table(self.table)
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         layout.addWidget(self.table)
@@ -1192,29 +1228,40 @@ class EmployeeScreen(QWidget):
     def on_selection_changed(self):
         self.edit_btn.setEnabled(False)
         self.del_btn.setEnabled(False)
+        self.permanent_del_btn.setEnabled(False)
         self.reset_btn.setEnabled(False)
         selected = self.table.selectedItems()
         if selected:
             row = selected[0].row()
-            emp_no = self.table.item(row, 0).text()
-            comp_name = self.table.item(row, 1).text()
-            name = self.table.item(row, 2).text()
-            dept_name = self.table.item(row, 3).text()
-            
+            item0 = self.table.item(row, 0)
+            item1 = self.table.item(row, 1)
+            item2 = self.table.item(row, 2)
+            item3 = self.table.item(row, 3)
+            item5 = self.table.item(row, 5)
+            emp_no = item0.text() if item0 else ""
+            comp_name = item1.text() if item1 else ""
+            name = item2.text() if item2 else ""
+            dept_name = item3.text() if item3 else ""
+            status_text = (item5.text() if item5 else "").strip()
+
             self.emp_no_input.setText(emp_no)
             self.name_input.setText(name)
-            
-            # Find and set company
+
             idx = self.company_combo.findText(comp_name)
             if idx >= 0: self.company_combo.setCurrentIndex(idx)
-            
-            # Find and set dept (combo is updated by company change)
+
             idx = self.dept_combo.findText(dept_name)
             if idx >= 0: self.dept_combo.setCurrentIndex(idx)
-            
-            self.edit_btn.setEnabled(True)
-            self.del_btn.setEnabled(True)
-            self.reset_btn.setEnabled(True)
+
+            if item0 and item0.data(Qt.UserRole) is not None:
+                self.edit_btn.setEnabled(True)
+                self.permanent_del_btn.setEnabled(True)
+                if status_text == "재직":
+                    self.del_btn.setEnabled(True)
+                    self.reset_btn.setEnabled(True)
+                else:
+                    self.del_btn.setEnabled(False)
+                    self.reset_btn.setEnabled(False)
 
     def clear_inputs(self):
         self.emp_no_input.clear()
@@ -1222,6 +1269,7 @@ class EmployeeScreen(QWidget):
         self.table.clearSelection()
         self.edit_btn.setEnabled(False)
         self.del_btn.setEnabled(False)
+        self.permanent_del_btn.setEnabled(False)
         self.reset_btn.setEnabled(False)
 
     def on_add(self):
@@ -1253,7 +1301,9 @@ class EmployeeScreen(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row()
-        eid = self.table.item(row, 0).data(Qt.UserRole)
+        item0 = self.table.item(row, 0)
+        eid = item0.data(Qt.UserRole) if item0 else None
+        if eid is None: return
         
         cid = self.company_combo.currentData()
         did = self.dept_combo.currentData()
@@ -1307,25 +1357,61 @@ class EmployeeScreen(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row()
-        eid = self.table.item(row, 0).data(Qt.UserRole)
+        item0 = self.table.item(row, 0)
+        eid = item0.data(Qt.UserRole) if item0 else None
+        if eid is None: return
         
-        if QMessageBox.question(self, "확인", "정말 이 사원을 삭제(퇴사) 처리하시겠습니까?") == QMessageBox.Yes:
+        if QMessageBox.question(self, "확인", "정말 이 사원을 삭제(퇴사) 처리하시겠습니까?\n(DB에는 남아 있어 같은 사번으로 재등록 시 '재등록' 처리됩니다.)") == QMessageBox.Yes:
             self.del_btn.setEnabled(False)
-            self.loader = DataLoader(self.api.delete_employee, eid)
+            self.permanent_del_btn.setEnabled(False)
+            self.loader = DataLoader(self.api.delete_employee, eid, False)
+            self.loader.finished.connect(self.on_delete_finished)
+            self.loader.error.connect(self.on_action_error)
+            self.loader.start()
+
+    def on_permanent_delete(self):
+        selected = self.table.selectedItems()
+        if not selected: return
+        row = selected[0].row()
+        item0 = self.table.item(row, 0)
+        item5 = self.table.item(row, 5)
+        eid = item0.data(Qt.UserRole) if item0 else None
+        if eid is None: return
+        name_item = self.table.item(row, 2)
+        name = name_item.text() if name_item else "(선택 행)"
+        status_text = (item5.text() if item5 else "").strip()
+
+        if status_text == "재직":
+            msg = (
+                f"'{name}' 사원은 재직자입니다.\n"
+                "완전 삭제하면 DB에서 제거되며, 모든 식사 기록도 삭제됩니다.\n"
+                "정말 삭제하시겠습니까?"
+            )
+        else:
+            msg = (
+                f"'{name}' 사원을 DB에서 완전히 제거합니다.\n"
+                "같은 사번으로 다시 등록할 수 있습니다.\n"
+                "관련 식사 기록도 삭제됩니다. 계속하시겠습니까?"
+            )
+        if QMessageBox.question(
+            self, "완전 삭제 확인", msg,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        ) == QMessageBox.Yes:
+            self.del_btn.setEnabled(False)
+            self.permanent_del_btn.setEnabled(False)
+            self.loader = DataLoader(self.api.delete_employee, eid, True)
             self.loader.finished.connect(self.on_delete_finished)
             self.loader.error.connect(self.on_action_error)
             self.loader.start()
 
     def on_delete_finished(self, success):
         self.del_btn.setEnabled(True)
+        self.permanent_del_btn.setEnabled(True)
         if success:
-            selected = self.table.selectedItems()
-            if selected:
-                row = selected[0].row()
-                self.table.removeRow(row)
-            QMessageBox.information(self, "성공", "삭제되었습니다.")
-            self.load_data()
+            # 서버 상태 기준으로 다시 로드해 삭제 반영 보장
             self.clear_inputs()
+            self.load_data()
+            QMessageBox.information(self, "성공", "삭제되었습니다.")
         else:
             QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
 
@@ -1333,8 +1419,11 @@ class EmployeeScreen(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row()
-        eid = self.table.item(row, 0).data(Qt.UserRole)
-        name = self.table.item(row, 2).text()
+        item0 = self.table.item(row, 0)
+        eid = item0.data(Qt.UserRole) if item0 else None
+        if eid is None: return
+        name_item = self.table.item(row, 2)
+        name = name_item.text() if name_item else "(선택 행)"
         
         if QMessageBox.question(self, "확인", f"'{name}' 사원의 기기 인증 상태 및 비밀번호를 초기화하시겠습니까?") == QMessageBox.Yes:
             self.reset_btn.setEnabled(False)
@@ -1363,61 +1452,70 @@ class EmployeeScreen(QWidget):
         self.add_btn.setEnabled(True)
         self.edit_btn.setEnabled(True)
         self.del_btn.setEnabled(True)
+        self.permanent_del_btn.setEnabled(True)
         self.reset_btn.setEnabled(True)
         QMessageBox.critical(self, "네트워크 오류", f"서버 통신 중 오류가 발생했습니다:\n{err_msg}")
 
     def load_data(self):
-        self.loader = DataLoader(self.api.get_employees, self.search_input.text(), "ACTIVE")
+        # 재직+퇴사 모두 조회 (status 없음 = 전체)
+        self.loader = DataLoader(self.api.get_employees, self.search_input.text(), None)
         self.loader.finished.connect(self.display_data)
         self.loader.start()
 
     def display_data(self, data):
         if not isinstance(data, list): return
-        
+
         selected_ids = set()
         for item in self.table.selectedItems():
             if item.column() == 0 and item.data(Qt.UserRole) is not None:
                 selected_ids.add(item.data(Qt.UserRole))
-                
+
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(data))
-        
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["사번", "회사", "이름", "부서", "인증", "상태"])
+
         comp_map = {c["id"]: c["name"] for c in self.main_win.companies_data if isinstance(c, dict)}
         dept_map = {d["id"]: d["name"] for d in self.main_win.departments_data if isinstance(d, dict)}
-        
+
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
             item_no = QTableWidgetItem(str(row.get("emp_no", "")))
             row_id = row.get("id")
-            item_no.setData(Qt.UserRole, row_id) # Store internal ID
-            
+            item_no.setData(Qt.UserRole, row_id)
+
             comp_name = comp_map.get(row.get("company_id"), "Unknown")
             dept_name = dept_map.get(row.get("department_id"), "Unknown")
-            
+            status_label = "재직" if row.get("status") == "ACTIVE" else "퇴사"
+
             self.table.setItem(i, 0, item_no)
             self.table.setItem(i, 1, QTableWidgetItem(comp_name))
             self.table.setItem(i, 2, QTableWidgetItem(str(row.get("name", ""))))
             self.table.setItem(i, 3, QTableWidgetItem(dept_name))
-            
+
             is_verified = row.get("is_verified", False)
             auth_status = "O" if is_verified else "X"
             item_auth = QTableWidgetItem(auth_status)
             if not is_verified:
-                item_auth.setForeground(QColor("#ef4444")) # 붉은색
+                item_auth.setForeground(QColor("#ef4444"))
             else:
-                item_auth.setForeground(QColor("#10b981")) # 녹색
+                item_auth.setForeground(QColor("#10b981"))
             self.table.setItem(i, 4, item_auth)
 
-            # Highlight resigned members
+            item_status = QTableWidgetItem(status_label)
+            self.table.setItem(i, 5, item_status)
+
             if row.get("status") == "RESIGNED":
-                for col in range(5):
-                    self.table.item(i, col).setForeground(QColor("#999999"))
-                    
+                for col in range(6):
+                    it = self.table.item(i, col)
+                    if it: it.setForeground(QColor("#999999"))
+
             if row_id in selected_ids:
-                for col in range(5):
-                    self.table.item(i, col).setSelected(True)
-            
+                for col in range(6):
+                    it = self.table.item(i, col)
+                    if it: it.setSelected(True)
+
         self.table.setUpdatesEnabled(True)
         self.table.setSortingEnabled(True)
 
@@ -1693,7 +1791,11 @@ class RawDataScreen(QWidget):
             return
 
         row_idx = selected[0].row()
-        log_id = self.table.item(row_idx, 0).data(Qt.UserRole)
+        item0 = self.table.item(row_idx, 0)
+        log_id = item0.data(Qt.UserRole) if item0 else None
+        if log_id is None:
+            self.current_log_id = None
+            return
         # Find log by log_id in full_data
         log = next((x for x in self.full_data if x["id"] == log_id), None)
         if not log: return
@@ -1919,16 +2021,15 @@ class PolicyScreen(QWidget):
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
             meal_type = row.get("meal_type", "")
-            
+            row_id = row.get("id")
             item_meal = QTableWidgetItem(meal_type)
-            item_meal.setData(Qt.UserRole, row["id"])
+            item_meal.setData(Qt.UserRole, row_id)
             item_meal.setData(Qt.UserRole + 1, meal_type)
             self.table.setItem(i, 0, item_meal)
             self.table.setItem(i, 1, QTableWidgetItem(str(row.get("start_time", ""))))
             self.table.setItem(i, 2, QTableWidgetItem(str(row.get("end_time", ""))))
-            
-            item_price = QTableWidgetItem()
-            item_price.setData(Qt.DisplayRole, row.get("base_price", 0))
+
+            item_price = QTableWidgetItem(str(row.get("base_price", 0)))
             self.table.setItem(i, 3, item_price)
         self.table.setUpdatesEnabled(True)
         self.table.setSortingEnabled(True)
@@ -1937,19 +2038,23 @@ class PolicyScreen(QWidget):
         selected = self.table.selectedItems()
         if selected:
             row = selected[0].row()
-            meal_display = self.table.item(row, 0).text()
-            start_time = self.table.item(row, 1).text()
-            end_time = self.table.item(row, 2).text()
-            price = self.table.item(row, 3).text()
-            
+            item0 = self.table.item(row, 0)
+            item1 = self.table.item(row, 1)
+            item2 = self.table.item(row, 2)
+            item3 = self.table.item(row, 3)
+            meal_display = item0.text() if item0 else ""
+            start_time = item1.text() if item1 else ""
+            end_time = item2.text() if item2 else ""
+            price = item3.text() if item3 else ""
+
             self.type_input.setText(meal_display)
-            
+
             self.start_input.setTime(QTime.fromString(start_time, "HH:mm:ss"))
             self.end_input.setTime(QTime.fromString(end_time, "HH:mm:ss"))
             self.price_input.setText(price)
-            
-            self.edit_btn.setEnabled(True)
-            self.del_btn.setEnabled(True)
+
+            self.edit_btn.setEnabled(item0 is not None and item0.data(Qt.UserRole) is not None)
+            self.del_btn.setEnabled(item0 is not None and item0.data(Qt.UserRole) is not None)
         else:
             self.type_input.clear()
             self.start_input.setTime(QTime(0, 0, 0))
@@ -1998,7 +2103,9 @@ class PolicyScreen(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row()
-        pid = self.table.item(row, 0).data(Qt.UserRole)
+        item0 = self.table.item(row, 0)
+        pid = item0.data(Qt.UserRole) if item0 else None
+        if pid is None: return
         
         meal_type = self.type_input.text().strip()
         start_time = self.start_input.time().toString("HH:mm:ss")
@@ -2030,8 +2137,10 @@ class PolicyScreen(QWidget):
         selected = self.table.selectedItems()
         if not selected: return
         row = selected[0].row()
-        pid = self.table.item(row, 0).data(Qt.UserRole)
-        meal_name = self.table.item(row, 0).text()
+        item0 = self.table.item(row, 0)
+        pid = item0.data(Qt.UserRole) if item0 else None
+        if pid is None: return
+        meal_name = item0.text() if item0 else "(선택 행)"
         
         if QMessageBox.question(self, "확인", f"'{meal_name}' 정책을 삭제하시겠습니까?") == QMessageBox.Yes:
             self.del_btn.setEnabled(False)
@@ -2440,7 +2549,7 @@ class MainWindow(QMainWindow):
             btn.style().unpolish(btn)
             btn.style().polish(btn)
         if idx == 1: self.companies.load_data()
-        if idx == 2: pass # Loaded by company selection
+        if idx == 2: self.departments.load_data()  # refresh table when opening tab (filters by selected company)
         if idx == 3: self.employees.load_data()
         if idx == 4: pass # Explicit search only
         if idx == 5: self.policies.load_data()
