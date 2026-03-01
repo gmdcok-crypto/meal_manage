@@ -537,7 +537,8 @@ class DashboardScreen(QWidget):
 
 
     def update_clock(self):
-        now = datetime.now()
+        kst = timezone(timedelta(hours=9))
+        now = datetime.now(kst)
         days = ["월", "화", "수", "목", "금", "토", "일"]
         day_str = days[now.weekday()]
         time_str = now.strftime(f"%m월 %d일({day_str}) %H:%M:%S")
@@ -594,31 +595,41 @@ class DashboardScreen(QWidget):
         self.recent_table.setUpdatesEnabled(False)
         self.recent_table.setRowCount(len(data))
         kst = timezone(timedelta(hours=9))
+        utc = timezone.utc
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
             user = row.get("user") or {}
             policy = row.get("policy") or {}
             ts = row.get("created_at", "")
-            # 서버(UTC) 기준 created_at → 한국 시간(KST)으로 변환해 표시
+            # 서버(UTC) 기준 created_at → 항상 한국 시간(KST)으로 변환해 표시
+            display_ts = ""
             try:
                 if isinstance(ts, str):
-                    s = ts.replace("Z", "+00:00").replace(" ", "T")
-                    if "+" in s or s.endswith("Z"):
-                        dt = datetime.fromisoformat(s)
-                    else:
-                        dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+                    s = ts.replace("Z", "+00:00").strip().replace(" ", "T")
+                    dt = datetime.fromisoformat(s)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=utc)
                     dt_kst = dt.astimezone(kst)
-                    ts = dt_kst.strftime("%H:%M")
+                    display_ts = dt_kst.strftime("%H:%M")
+                elif hasattr(ts, "astimezone"):
+                    dt = ts if ts.tzinfo else ts.replace(tzinfo=utc)
+                    display_ts = dt.astimezone(kst).strftime("%H:%M")
                 else:
-                    ts = str(ts)[:8] if ts else ""
+                    display_ts = str(ts)[:8] if ts else ""
             except Exception:
-                if isinstance(ts, str) and "T" in ts:
-                    ts = ts.split("T")[-1][:5]
-                elif isinstance(ts, str) and " " in ts:
-                    ts = ts.split(" ")[-1][:5]
-                else:
-                    ts = str(ts)[:5] if ts else ""
-            self.recent_table.setItem(i, 0, QTableWidgetItem(ts[:5] if len(ts) >= 5 else ts))
+                try:
+                    # 폴백: "YYYY-MM-DDTHH:MM:SS" 형태에서 UTC로 해석 후 KST 변환
+                    if isinstance(ts, str) and "T" in ts:
+                        part = ts.split("T")[-1][:8]
+                        date_part = ts.split("T")[0]
+                        if date_part and part:
+                            dt = datetime.fromisoformat(f"{date_part}T{part}").replace(tzinfo=utc)
+                            display_ts = dt.astimezone(kst).strftime("%H:%M")
+                    if not display_ts and isinstance(ts, str):
+                        display_ts = ts.split("T")[-1][:5] if "T" in ts else ts.split(" ")[-1][:5] if " " in ts else str(ts)[:5]
+                except Exception:
+                    display_ts = str(ts)[:5] if ts else ""
+            self.recent_table.setItem(i, 0, QTableWidgetItem(display_ts[:5] if len(display_ts) >= 5 else display_ts))
             self.recent_table.setItem(i, 1, QTableWidgetItem(str(user.get("name", ""))))
             self.recent_table.setItem(i, 2, QTableWidgetItem(str(user.get("department_name", ""))))
             self.recent_table.setItem(i, 3, QTableWidgetItem(str(policy.get("meal_type", ""))))
@@ -2432,6 +2443,14 @@ class MainWindow(QMainWindow):
         self.departments_data = []
         self.setWindowTitle("Meal Auth - Admin Management System")
         self.resize(1280, 850)
+        # 화면 가용 영역 안으로 제한 (Windows setGeometry 경고 방지)
+        screen = QApplication.primaryScreen()
+        if screen:
+            available = screen.availableGeometry()
+            w = min(self.width(), available.width())
+            h = min(self.height(), available.height())
+            self.resize(w, h)
+            self.setMaximumSize(available.width(), available.height())
         self.setStyleSheet(QSS)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)

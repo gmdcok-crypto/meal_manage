@@ -9,7 +9,7 @@ from .utils import record_audit_log
 from typing import List, Optional
 from datetime import datetime, date
 
-from app.core.time_utils import utc_now, parse_created_at_kst_to_utc, kst_date_range_to_utc_naive, kst_today
+from app.core.time_utils import utc_now, parse_created_at_kst_to_utc, kst_date_range_to_naive, kst_today, KST
 
 router = APIRouter(tags=["raw-data"])
 
@@ -36,19 +36,19 @@ async def list_raw_data(
     
     filters = []
     if start_date and end_date:
-        # 사용자 선택 날짜는 KST 기준 → UTC 구간으로 변환 후 created_at(UTC) 필터
-        start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date)
-        filters.append(MealLog.created_at >= start_utc)
-        filters.append(MealLog.created_at < end_utc)
+        # 사용자 선택 날짜는 KST 기준, created_at(KST naive) 필터
+        start_naive, end_naive = kst_date_range_to_naive(start_date, end_date)
+        filters.append(MealLog.created_at >= start_naive)
+        filters.append(MealLog.created_at < end_naive)
     elif start_date:
         # start_date만 있으면 start_date 00:00 KST ~ 오늘 끝까지
-        start_utc, end_utc = kst_date_range_to_utc_naive(start_date, kst_today())
-        filters.append(MealLog.created_at >= start_utc)
-        filters.append(MealLog.created_at < end_utc)
+        start_naive, end_naive = kst_date_range_to_naive(start_date, kst_today())
+        filters.append(MealLog.created_at >= start_naive)
+        filters.append(MealLog.created_at < end_naive)
     elif end_date:
-        start_utc, end_utc = kst_date_range_to_utc_naive(end_date, end_date)
-        filters.append(MealLog.created_at >= start_utc)
-        filters.append(MealLog.created_at < end_utc)
+        start_naive, end_naive = kst_date_range_to_naive(end_date, end_date)
+        filters.append(MealLog.created_at >= start_naive)
+        filters.append(MealLog.created_at < end_naive)
     if search:
         filters.append(or_(
             User.name.icontains(search),
@@ -81,7 +81,7 @@ async def create_manual_meal(
     if not policy:
         raise HTTPException(status_code=404, detail="Meal Policy not found")
         
-    created_at_utc = parse_created_at_kst_to_utc(created_at) if created_at is not None else utc_now()
+    created_at_naive_kst = (parse_created_at_kst_to_utc(created_at) if created_at is not None else utc_now()).astimezone(KST).replace(tzinfo=None)
     new_log = MealLog(
         user_id=user_id,
         policy_id=policy_id,
@@ -89,7 +89,7 @@ async def create_manual_meal(
         status="SERVED",
         path="MANUAL",
         final_price=policy.base_price,
-        created_at=created_at_utc
+        created_at=created_at_naive_kst
     )
     db.add(new_log)
     await db.flush()
@@ -191,7 +191,7 @@ async def update_raw_data(
             log.policy_id = update_data.policy_id
             log.final_price = policy.base_price
     if update_data.created_at is not None:
-        log.created_at = parse_created_at_kst_to_utc(update_data.created_at) or update_data.created_at
+        log.created_at = (parse_created_at_kst_to_utc(update_data.created_at) or utc_now()).astimezone(KST).replace(tzinfo=None)
     if update_data.guest_count is not None: log.guest_count = update_data.guest_count
     
     await record_audit_log(

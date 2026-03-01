@@ -82,7 +82,7 @@ class MealLog(Base):
     void_operator_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
     voided_at = Column(DateTime(timezone=True), nullable=True)
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=False), server_default=func.now())  # 한국 시간(KST) 로컬 시각 그대로 저장
     
     user = relationship("User", foreign_keys=[user_id], back_populates="meal_logs")
     policy = relationship("MealPolicy")

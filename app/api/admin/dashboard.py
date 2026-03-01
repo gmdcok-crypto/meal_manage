@@ -4,7 +4,7 @@ from sqlalchemy import select, func, and_
 from app.core.database import get_db
 from app.models.models import MealLog, MealPolicy, User
 from app.schemas.schemas import DashboardStats
-from app.core.time_utils import kst_now, kst_today, kst_date_range_utc_naive
+from app.core.time_utils import kst_now, kst_today, kst_date_range_naive
 from datetime import date, datetime
 from typing import List
 
@@ -25,11 +25,11 @@ async def get_today_stats(db: AsyncSession = Depends(get_db)):
     policy_result = await db.execute(policy_query)
     policies = policy_result.scalars().all()
     
-    # Get all logs for today (한국 기준 오늘, created_at은 UTC로 저장됨)
-    start_utc, end_utc = kst_date_range_utc_naive()
+    # Get all logs for today (created_at은 KST naive로 저장됨)
+    start_naive, end_naive = kst_date_range_naive()
     log_query = select(MealLog).where(
-        MealLog.created_at >= start_utc,
-        MealLog.created_at < end_utc
+        MealLog.created_at >= start_naive,
+        MealLog.created_at < end_naive
     )
     log_result = await db.execute(log_query)
     logs = log_result.scalars().all()

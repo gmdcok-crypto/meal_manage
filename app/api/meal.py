@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.models import MealPolicy, User, MealLog
 from app.schemas.schemas import MealPolicyResponse
-from app.core.time_utils import kst_now, utc_now, utc_to_kst_str
+from app.core.time_utils import utc_now, KST
 
 router = APIRouter(prefix="/meal", tags=["meal"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/verify_device")
@@ -52,16 +52,17 @@ async def process_qr_scan(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # 식사 정책 시간은 한국 시간(KST, UTC+9) 기준으로 비교 (Railway 등 서버가 UTC여도 동일 동작)
-    now_time = kst_now().time()
+    # 저장할 시각을 한 번 정한 뒤, 그 시각의 한국 시간(KST)으로 식사 종류(정책) 판단 및 로그 저장 (서버의 "지금"이 아닌 로그 시각 기준)
+    event_kst = utc_now().astimezone(KST)
+    log_time_kst = event_kst.time()
 
-    # 식사 시간 범위 내에 있는 정책 검색
+    # 식사 시간 범위 내에 있는 정책 검색 (로그에 저장될 시각 기준)
     result = await db.execute(
         select(MealPolicy).where(
             and_(
                 MealPolicy.is_active == True,
-                MealPolicy.start_time <= now_time,
-                MealPolicy.end_time >= now_time
+                MealPolicy.start_time <= log_time_kst,
+                MealPolicy.end_time >= log_time_kst
             )
         )
     )
@@ -81,7 +82,7 @@ async def process_qr_scan(
         status="ARRIVED",
         path="QR",
         final_price=policy.base_price,
-        created_at=utc_now()
+        created_at=event_kst.replace(tzinfo=None)  # 한국 시간 로컬 시각 그대로 저장 (naive)
     )
     db.add(new_log)
     await db.commit()
@@ -103,7 +104,7 @@ async def process_qr_scan(
         "status": "success",
         "message": "식수 인증이 완료되었습니다.",
         "log_id": new_log.id,
-        "auth_time": (utc_to_kst_str(new_log.created_at) or "").split("T")[-1][:8] if new_log.created_at else "00:00:00",
+        "auth_time": (new_log.created_at.strftime("%H:%M:%S") if new_log.created_at else "00:00:00"),
         "user": {
             "name": current_user.name,
             "emp_no": current_user.emp_no,

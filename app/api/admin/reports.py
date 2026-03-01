@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.core.database import get_db
 from app.models.models import MealLog, User, MealPolicy, Department
-from app.core.time_utils import kst_date_range_to_utc_naive, utc_to_kst_str
+from app.core.time_utils import kst_date_range_to_naive, utc_to_kst_str
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
@@ -14,15 +14,15 @@ async def get_daily_report(
     target_date: date,
     db: AsyncSession = Depends(get_db)
 ):
-    start_utc, end_utc = kst_date_range_to_utc_naive(target_date, target_date)
+    start_naive, end_naive = kst_date_range_to_naive(target_date, target_date)
     query = select(
         MealPolicy.meal_type,
         func.count(MealLog.id).label("employee_count"),
         func.sum(MealLog.guest_count).label("guest_count")
     ).join(MealLog, MealPolicy.id == MealLog.policy_id)\
      .where(and_(
-        MealLog.created_at >= start_utc,
-        MealLog.created_at < end_utc,
+        MealLog.created_at >= start_naive,
+        MealLog.created_at < end_naive,
         MealLog.is_void == False
     ))\
      .group_by(MealPolicy.meal_type)
@@ -39,12 +39,12 @@ async def get_monthly_report(
     start_date = date(year, month, 1)
     end_date = date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
     end_date_last = end_date - timedelta(days=1)  # 해당 월 마지막 날
-    start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date_last)
+    start_naive, end_naive = kst_date_range_to_naive(start_date, end_date_last)
 
-    # created_at은 UTC → 일자별 집계는 KST 날짜 기준으로 (Python에서 그룹핑)
+    # created_at은 KST naive → 일자별 집계는 KST 날짜 기준
     query = select(MealLog).where(and_(
-        MealLog.created_at >= start_utc,
-        MealLog.created_at < end_utc,
+        MealLog.created_at >= start_naive,
+        MealLog.created_at < end_naive,
         MealLog.is_void == False
     ))
     result = await db.execute(query)
@@ -72,7 +72,7 @@ async def get_department_report(
     end_date: date,
     db: AsyncSession = Depends(get_db)
 ):
-    start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date)
+    start_naive, end_naive = kst_date_range_to_naive(start_date, end_date)
     query = select(
         Department.name.label("department_name"),
         func.count(MealLog.id).label("count"),
@@ -80,8 +80,8 @@ async def get_department_report(
     ).join(MealLog, User.id == MealLog.user_id)\
      .join(Department, User.department_id == Department.id)\
      .where(and_(
-        MealLog.created_at >= start_utc,
-        MealLog.created_at < end_utc,
+        MealLog.created_at >= start_naive,
+        MealLog.created_at < end_naive,
         MealLog.is_void == False
      )).group_by(Department.name)
      
@@ -102,14 +102,14 @@ async def get_excel_report(
     start_date = date(year, month, 1)
     end_date = date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
     end_date_last = end_date - timedelta(days=1)
-    start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date_last)
+    start_naive, end_naive = kst_date_range_to_naive(start_date, end_date_last)
     
     query = select(MealLog).options(
         joinedload(MealLog.user).joinedload(User.department_ref),
         joinedload(MealLog.policy)
     ).where(and_(
-        MealLog.created_at >= start_utc,
-        MealLog.created_at < end_utc,
+        MealLog.created_at >= start_naive,
+        MealLog.created_at < end_naive,
         MealLog.is_void == False
     ))
     

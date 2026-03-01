@@ -1,6 +1,6 @@
 """한국 시간(KST, UTC+9) 기준 now/today. 서버가 UTC 환경(Railway 등)이어도 동일 동작.
-저장은 UTC, API 응답은 KST 문자열로 통일."""
-from datetime import datetime, timezone, timedelta, date
+meal_logs.created_at은 한국 시간(naive)으로 저장, API 응답은 KST 문자열로 통일."""
+from datetime import datetime, timezone, timedelta, date, time
 
 KST = timezone(timedelta(hours=9))
 UTC = timezone.utc
@@ -22,33 +22,45 @@ def kst_today():
 
 
 def kst_date_range_utc_naive():
-    """한국 기준 오늘 00:00 ~ 내일 00:00을 UTC naive datetime으로. DB created_at(UTC) 필터용."""
-    from datetime import time as dt_time
+    """한국 기준 오늘 00:00 ~ 내일 00:00을 UTC naive datetime으로. (레거시: created_at이 UTC일 때 필터용)"""
     today = kst_today()
-    start_kst = datetime.combine(today, dt_time.min).replace(tzinfo=KST)
-    end_kst = datetime.combine(today, dt_time.max).replace(tzinfo=KST) + timedelta(seconds=1)
+    start_kst = datetime.combine(today, time.min).replace(tzinfo=KST)
+    end_kst = datetime.combine(today, time.max).replace(tzinfo=KST) + timedelta(seconds=1)
     start_utc = start_kst.astimezone(UTC).replace(tzinfo=None)
     end_utc = end_kst.astimezone(UTC).replace(tzinfo=None)
     return start_utc, end_utc
+
+
+def kst_date_range_naive():
+    """한국 기준 오늘 00:00 ~ 내일 00:00을 naive datetime으로. created_at(KST naive) 필터용."""
+    today = kst_today()
+    start_naive = datetime.combine(today, time.min)
+    end_naive = datetime.combine(today + timedelta(days=1), time.min)
+    return start_naive, end_naive
 
 
 def kst_date_range_to_utc_naive(start_date: date, end_date: date):
-    """한국 기준 날짜 구간 [start_date 00:00 KST, end_date 다음날 00:00 KST)을 UTC naive로. 원시데이터 조회 필터용."""
-    from datetime import time as dt_time
-    start_kst = datetime.combine(start_date, dt_time.min).replace(tzinfo=KST)
-    # end_date 당일 23:59:59.999 KST 다음 초 = end_date+1 00:00:00 KST
-    end_kst = datetime.combine(end_date, dt_time.max).replace(tzinfo=KST) + timedelta(seconds=1)
+    """한국 기준 날짜 구간을 UTC naive로. (레거시: created_at이 UTC일 때 필터용)"""
+    start_kst = datetime.combine(start_date, time.min).replace(tzinfo=KST)
+    end_kst = datetime.combine(end_date, time.max).replace(tzinfo=KST) + timedelta(seconds=1)
     start_utc = start_kst.astimezone(UTC).replace(tzinfo=None)
     end_utc = end_kst.astimezone(UTC).replace(tzinfo=None)
     return start_utc, end_utc
 
 
+def kst_date_range_to_naive(start_date: date, end_date: date):
+    """한국 기준 날짜 구간 [start_date 00:00, end_date 다음날 00:00)을 naive datetime으로. created_at(KST naive) 필터용."""
+    start_naive = datetime.combine(start_date, time.min)
+    end_naive = datetime.combine(end_date + timedelta(days=1), time.min)
+    return start_naive, end_naive
+
+
 def utc_to_kst_str(dt: datetime | None) -> str | None:
-    """DB 등에서 읽은 datetime(naive=UTC 또는 aware)을 KST 기준 문자열로. 응답용."""
+    """DB에서 읽은 created_at을 KST 기준 문자열로. naive면 KST로 간주하고 그대로 포맷, aware면 KST로 변환 후 포맷."""
     if dt is None:
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
+        return dt.strftime("%Y-%m-%dT%H:%M:%S")
     return dt.astimezone(KST).strftime("%Y-%m-%dT%H:%M:%S")
 
 
