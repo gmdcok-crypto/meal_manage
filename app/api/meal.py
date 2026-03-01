@@ -51,10 +51,11 @@ async def process_qr_scan(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # 현재 시간에 활성화된 식사 정책 조회
-    from datetime import datetime
-    now_time = datetime.now().time()
-    
+    # 식사 정책 시간은 한국 시간(KST, UTC+9) 기준으로 비교 (Railway 등 서버가 UTC여도 동일 동작)
+    from datetime import datetime, timezone, timedelta
+    kst = timezone(timedelta(hours=9))
+    now_time = datetime.now(kst).time()
+
     # 식사 시간 범위 내에 있는 정책 검색
     result = await db.execute(
         select(MealPolicy).where(
