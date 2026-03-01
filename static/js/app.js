@@ -3,7 +3,8 @@ const app = {
         isLoggedIn: false,
         preChecked: false,
         user: null,
-        meal: null
+        meal: null,
+        lastAuthAt: null   // 마지막 QR 인증 성공 시각 (5분 후 인증화면 다시보기 비표시용)
     },
     homeClockTimer: null,
     authCountdownTimer: null,
@@ -23,6 +24,8 @@ const app = {
                     if (userStr) {
                         this.state.user = JSON.parse(userStr);
                         this.state.isLoggedIn = true;
+                        var lastAt = localStorage.getItem('meal_lastAuthAt');
+                        this.state.lastAuthAt = lastAt ? parseInt(lastAt, 10) : null;
                         this.updateUserInfoUI();
                         this.showPage('page-home');
                         return;
@@ -124,8 +127,10 @@ const app = {
     logout() {
         localStorage.removeItem('meal_token');
         localStorage.removeItem('meal_user');
+        localStorage.removeItem('meal_lastAuthAt');
         this.state.isLoggedIn = false;
         this.state.user = null;
+        this.state.lastAuthAt = null;
         this.showPage('page-login');
     },
 
@@ -222,6 +227,8 @@ const app = {
                     this.state.user = { ...this.state.user, ...user };
                     try { localStorage.setItem('meal_user', JSON.stringify(this.state.user)); } catch (e) {}
                 }
+                this.state.lastAuthAt = Date.now();
+                try { localStorage.setItem('meal_lastAuthAt', String(this.state.lastAuthAt)); } catch (e) {}
                 this.startAuth();
             } else {
                 if (res.status === 401 || res.status === 403) {
@@ -241,7 +248,9 @@ const app = {
     startAuth() {
         this.showPage('page-auth-success');
         this.startClock();
-        this.startCountdown();
+        // 인증 시점 기준 3분 후 만료
+        const expiresAt = (this.state.lastAuthAt || Date.now()) + 3 * 60 * 1000;
+        this.startCountdown(expiresAt);
     },
 
     startClock() {
@@ -261,36 +270,48 @@ const app = {
         update();
     },
 
-    startCountdown() {
+    startCountdown(expiresAtMs) {
         if (this.authCountdownTimer) {
             clearInterval(this.authCountdownTimer);
             this.authCountdownTimer = null;
         }
-        let seconds = 180; // 3분
         const countdownEl = document.getElementById('auth-countdown');
         if (!countdownEl) return;
-        this.authCountdownTimer = setInterval(() => {
-            seconds--;
+        const update = () => {
+            const now = Date.now();
+            const remainingMs = Math.max(0, expiresAtMs - now);
+            const seconds = Math.ceil(remainingMs / 1000);
             const mins = Math.floor(seconds / 60);
             const secs = seconds % 60;
             countdownEl.textContent = `남은 시간 ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            if (seconds <= 0) {
+            if (remainingMs <= 0) {
                 clearInterval(this.authCountdownTimer);
                 this.authCountdownTimer = null;
                 alert("인증 시간이 만료되었습니다. 다시 시도해주세요.");
                 this.goHome();
             }
-        }, 1000);
+        };
+        update();
+        this.authCountdownTimer = setInterval(update, 1000);
     },
 
     goHome() {
         this.showPage('page-home');
     },
 
-    // 확인 후 또는 화면을 닫았다가 다시 인증 화면을 보여줄 때 사용
+    // 확인 후 또는 화면을 닫았다가 다시 인증 화면을 보여줄 때 사용 (5분 지나면 표시 안 함)
     showAuthScreen() {
         if (!this.state.user) {
             alert("인증된 사용자 정보가 없습니다. QR 스캔을 먼저 해주세요.");
+            return;
+        }
+        const lastAt = this.state.lastAuthAt || (localStorage.getItem('meal_lastAuthAt') && parseInt(localStorage.getItem('meal_lastAuthAt'), 10));
+        const fiveMinMs = 5 * 60 * 1000;
+        if (lastAt && (Date.now() - lastAt > fiveMinMs)) {
+            this.state.lastAuthAt = null;
+            try { localStorage.removeItem('meal_lastAuthAt'); } catch (e) {}
+            alert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. QR 스캔을 다시 해주세요.");
+            this.goHome();
             return;
         }
         const u = this.state.user;
@@ -300,7 +321,9 @@ const app = {
         if (userInfoEl) userInfoEl.textContent = [u.name, u.dept_name].filter(Boolean).join(' / ') || '-';
         this.showPage('page-auth-success');
         this.startClock();
-        this.startCountdown();
+        // 인증화면 다시보기: 인증 시점 기준 5분 후 만료 (lastAt 없으면 현재 시점+5분)
+        const expiry = lastAt ? lastAt + fiveMinMs : Date.now() + fiveMinMs;
+        this.startCountdown(expiry);
     }
 };
 

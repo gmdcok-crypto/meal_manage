@@ -106,8 +106,10 @@ QTableWidget { background-color: #1e293b; color: #f1f5f9; gridline-color: #33415
 QTableWidget::item { padding: 0px; border-bottom: 1px solid #334155; }
 QTableWidget::item:selected { background-color: #3b82f6; color: #ffffff; font-weight: bold; }
 QHeaderView::section { background-color: #111b2d; color: #94a3b8; padding: 12px; border: none; font-weight: bold; font-size: 19px; font-family: 'Malgun Gothic'; border-bottom: 2px solid #334155; }
-QLineEdit, QTimeEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 10px 15px; font-size: 19px; min-height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
-QDateEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding-left: 10px; padding-right: 30px; font-size: 19px; min-height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QLineEdit, QTimeEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 10px 15px; font-size: 19px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QDateEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding-left: 10px; padding-right: 30px; font-size: 19px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QDateEdit::up-button { subcontrol-origin: border; subcontrol-position: top right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top-right-radius: 8px; background-color: #334155; }
+QDateEdit::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top: 1px solid #475569; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::drop-down { subcontrol-origin: border; subcontrol-position: top right; width: 26px; border-left: 1px solid #475569; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::down-arrow { image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgdmlld0JveD0iMCAwIDEwIDEwIj48cGF0aCBkPSJNMSAzIEg5IEw1IDggWiIgZmlsbD0iI2Y4ZmFmYyIvPjwvc3ZnPg=="); width: 12px; height: 12px; }
 QCalendarWidget QWidget { background-color: #1e293b; color: #f8fafc; font-family: 'Malgun Gothic'; }
@@ -121,7 +123,7 @@ QPushButton#SecondaryBtn { background-color: #64748b; color: #f8fafc; border-rad
 QPushButton#SecondaryBtn:hover { background-color: #475569; }
 QPushButton#DangerBtn { background-color: #ef4444; color: white; border-radius: 8px; padding: 10px 20px; font-weight: bold; font-size: 19px; min-height: 40px; min-width: 100px; font-family: 'Malgun Gothic'; }
 QPushButton#DangerBtn:hover { background-color: #dc2626; }
-QComboBox { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 15px; font-size: 21px; min-height: 45px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QComboBox { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 15px; font-size: 21px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QComboBox QAbstractItemView { background-color: #1e293b; color: #f8fafc; selection-background-color: #3b82f6; border: 1px solid #334155; outline: none; }
 QComboBox QAbstractItemView::item { min-height: 35px; padding: 2px 10px; }
 QLabel#InputLabel { color: #ffffff; font-weight: bold; font-family: 'Malgun Gothic'; font-size: 18px; }
@@ -523,7 +525,7 @@ class DashboardScreen(QWidget):
         info_layout = QVBoxLayout(info_frame)
         info_layout.setContentsMargins(0, 0, 0, 0) # 테이블이 프레임에 꽉 차도록 여백 제거
         self.recent_table = QTableWidget(0, 4)
-        self.recent_table.setHorizontalHeaderLabels(["시간", "이름", "부서", "메뉴"])
+        self.recent_table.setHorizontalHeaderLabels(["시간", "이름", "부서", "식사종류"])
         setup_standard_table(self.recent_table) # 표준 테이블 스타일 적용
         
         # Fixed height for exactly 17 rows + header
@@ -1611,11 +1613,13 @@ class RawDataScreen(QWidget):
         self.edit_date = QDateEdit()
         self.edit_date.setCalendarPopup(True)
         self.edit_date.setDate(QDate.currentDate())
+        self.edit_date.setFixedHeight(40)
         
         time_label = QLabel("시간")
         time_label.setObjectName("InputLabel")
         self.edit_time = QTimeEdit()
         self.edit_time.setTime(QTime.currentTime())
+        self.edit_time.setFixedHeight(40)
         
         # Employee Search
         emp_label = QLabel("사원 검색 (이름)")
@@ -1639,6 +1643,7 @@ class RawDataScreen(QWidget):
         policy_label = QLabel("식사 종류")
         policy_label.setObjectName("InputLabel")
         self.policy_combo = QComboBox()
+        self.policy_combo.setFixedHeight(40)
         self.policy_combo.addItem("선택하세요", None)
         self.policy_combo.currentIndexChanged.connect(self.on_policy_changed)
         
@@ -1649,6 +1654,7 @@ class RawDataScreen(QWidget):
         guest_label = QLabel("게스트 인원")
         guest_label.setObjectName("InputLabel")
         self.edit_guest = QLineEdit("0")
+        self.edit_guest.setFixedHeight(40)
         
         # Add to input layout
         for label, widget in [
