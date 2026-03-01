@@ -6,6 +6,7 @@ const app = {
         meal: null
     },
     homeClockTimer: null,
+    authCountdownTimer: null,
 
     async init() {
         // 토큰이 있으면 로딩 화면 → 서버 확인 후 홈 또는 로그인 (깜빡임 방지)
@@ -49,6 +50,10 @@ const app = {
         if (this.homeClockTimer) {
             clearInterval(this.homeClockTimer);
             this.homeClockTimer = null;
+        }
+        if (this.authCountdownTimer) {
+            clearInterval(this.authCountdownTimer);
+            this.authCountdownTimer = null;
         }
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.getElementById(pageId).classList.add('active');
@@ -213,6 +218,10 @@ const app = {
                 if (empNoEl) empNoEl.textContent = user.emp_no || '';
                 if (userInfoEl) userInfoEl.textContent = [user.name, user.dept_name].filter(Boolean).join(' / ') || '-';
 
+                if (this.state.user) {
+                    this.state.user = { ...this.state.user, ...user };
+                    try { localStorage.setItem('meal_user', JSON.stringify(this.state.user)); } catch (e) {}
+                }
                 this.startAuth();
             } else {
                 if (res.status === 401 || res.status === 403) {
@@ -253,15 +262,21 @@ const app = {
     },
 
     startCountdown() {
+        if (this.authCountdownTimer) {
+            clearInterval(this.authCountdownTimer);
+            this.authCountdownTimer = null;
+        }
         let seconds = 180; // 3분
         const countdownEl = document.getElementById('auth-countdown');
-        const timer = setInterval(() => {
+        if (!countdownEl) return;
+        this.authCountdownTimer = setInterval(() => {
             seconds--;
             const mins = Math.floor(seconds / 60);
             const secs = seconds % 60;
             countdownEl.textContent = `남은 시간 ${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             if (seconds <= 0) {
-                clearInterval(timer);
+                clearInterval(this.authCountdownTimer);
+                this.authCountdownTimer = null;
                 alert("인증 시간이 만료되었습니다. 다시 시도해주세요.");
                 this.goHome();
             }
@@ -270,6 +285,22 @@ const app = {
 
     goHome() {
         this.showPage('page-home');
+    },
+
+    // 확인 후 또는 화면을 닫았다가 다시 인증 화면을 보여줄 때 사용
+    showAuthScreen() {
+        if (!this.state.user) {
+            alert("인증된 사용자 정보가 없습니다. QR 스캔을 먼저 해주세요.");
+            return;
+        }
+        const u = this.state.user;
+        const empNoEl = document.getElementById('auth-emp-no');
+        const userInfoEl = document.getElementById('auth-user-info');
+        if (empNoEl) empNoEl.textContent = u.emp_no || '';
+        if (userInfoEl) userInfoEl.textContent = [u.name, u.dept_name].filter(Boolean).join(' / ') || '-';
+        this.showPage('page-auth-success');
+        this.startClock();
+        this.startCountdown();
     }
 };
 
