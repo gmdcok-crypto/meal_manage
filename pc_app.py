@@ -6,7 +6,7 @@ import json
 import httpx
 import asyncio
 import websockets
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QStackedWidget, QTableWidget, QTableWidgetItem,
@@ -591,17 +591,31 @@ class DashboardScreen(QWidget):
         self.recent_table.setSortingEnabled(False)
         self.recent_table.setUpdatesEnabled(False)
         self.recent_table.setRowCount(len(data))
+        kst = timezone(timedelta(hours=9))
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
             user = row.get("user") or {}
             policy = row.get("policy") or {}
             ts = row.get("created_at", "")
-            if isinstance(ts, str) and "T" in ts:
-                ts = ts.split("T")[-1][:8]  # HH:MM:SS
-            elif isinstance(ts, str):
-                ts = ts.split(" ")[-1][:8] if " " in ts else ts[:8]  # "YYYY-MM-DD HH:MM:SS"
-            else:
-                ts = str(ts)[:8] if ts else ""
+            # 서버(UTC) 기준 created_at → 한국 시간(KST)으로 변환해 표시
+            try:
+                if isinstance(ts, str):
+                    s = ts.replace("Z", "+00:00").replace(" ", "T")
+                    if "+" in s or s.endswith("Z"):
+                        dt = datetime.fromisoformat(s)
+                    else:
+                        dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+                    dt_kst = dt.astimezone(kst)
+                    ts = dt_kst.strftime("%H:%M")
+                else:
+                    ts = str(ts)[:8] if ts else ""
+            except Exception:
+                if isinstance(ts, str) and "T" in ts:
+                    ts = ts.split("T")[-1][:5]
+                elif isinstance(ts, str) and " " in ts:
+                    ts = ts.split(" ")[-1][:5]
+                else:
+                    ts = str(ts)[:5] if ts else ""
             self.recent_table.setItem(i, 0, QTableWidgetItem(ts[:5] if len(ts) >= 5 else ts))
             self.recent_table.setItem(i, 1, QTableWidgetItem(str(user.get("name", ""))))
             self.recent_table.setItem(i, 2, QTableWidgetItem(str(user.get("department_name", ""))))
