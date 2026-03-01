@@ -55,7 +55,7 @@ async def create_employee(
     await db.flush() # Get ID
     
     await record_audit_log(
-        db, operator_id, "CREATE", "users", new_user.id,
+        db, operator_id, "CREATE", "employees", new_user.id,
         after_value=user_in.dict(),
         reason="Manual registration"
     )
@@ -91,7 +91,7 @@ async def update_employee(
         setattr(user, key, value)
     
     await record_audit_log(
-        db, operator_id, "UPDATE", "users", user.id,
+        db, operator_id, "UPDATE", "employees", user.id,
         before_value=before_value,
         after_value=update_data,
         reason="Admin update"
@@ -121,7 +121,7 @@ async def delete_employee_soft(
     user.resigned_at = datetime.now()
     
     await record_audit_log(
-        db, operator_id, "RESIGN", "users", user.id,
+        db, operator_id, "RESIGN", "employees", user.id,
         before_value={"status": before_status},
         after_value={"status": "RESIGNED"},
         reason="Admin delete action"
@@ -145,7 +145,7 @@ async def reset_device_auth(
     user.password_hash = None
     
     await record_audit_log(
-        db, operator_id, "RESET_DEVICE", "users", user.id,
+        db, operator_id, "RESET_DEVICE", "employees", user.id,
         before_value={},
         after_value={"is_verified": False, "password_hash": None},
         reason="Admin requested device reset"

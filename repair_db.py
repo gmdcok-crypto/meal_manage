@@ -22,7 +22,19 @@ async def repair():
     async_engine = create_async_engine(settings.DATABASE_URL)
     
     async with async_engine.begin() as conn:
-        # 3. Ensure tables exist (recreates users table if deleted)
+        # 기존 DB 마이그레이션: users 테이블이 있으면 employees 로 이름 변경
+        try:
+            res = await conn.execute(text(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_schema = DATABASE() AND table_name = 'users'"
+            ))
+            n = res.scalar()
+            if n and int(n) > 0:
+                await conn.execute(text("RENAME TABLE users TO employees"))
+                print("Migrated table: users -> employees")
+        except Exception as e:
+            print(f"Note: Migration users->employees: {e}")
+        # 3. Ensure tables exist (recreates employees table if deleted)
         await conn.run_sync(Base.metadata.create_all)
         print("Schema ensured (tables created/verified).")
         
@@ -33,22 +45,22 @@ async def repair():
             print("Ensured 'code' column in companies")
         except: pass
 
-        # Ensure 'department_id' in users
+        # Ensure 'department_id' in employees
         try:
-            await conn.execute(text("ALTER TABLE users ADD COLUMN department_id INTEGER"))
-            print("Ensured 'department_id' column in users")
+            await conn.execute(text("ALTER TABLE employees ADD COLUMN department_id INTEGER"))
+            print("Ensured 'department_id' column in employees")
         except: pass
 
-        # Ensure 'is_verified' in users
+        # Ensure 'is_verified' in employees
         try:
-            await conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE"))
-            print("Ensured 'is_verified' column in users")
+            await conn.execute(text("ALTER TABLE employees ADD COLUMN is_verified BOOLEAN DEFAULT FALSE"))
+            print("Ensured 'is_verified' column in employees")
         except: pass
 
-        # Ensure 'password_hash' in users
+        # Ensure 'password_hash' in employees
         try:
-            await conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
-            print("Ensured 'password_hash' column in users")
+            await conn.execute(text("ALTER TABLE employees ADD COLUMN password_hash VARCHAR(255)"))
+            print("Ensured 'password_hash' column in employees")
         except: pass
 
         # Ensure 'policy_id' in meal_logs (rename menu_id if exists)
@@ -68,13 +80,13 @@ async def repair():
         print("\nOptimizing Foreign Key constraints (ON DELETE CASCADE)...")
         fk_configs = [
             ("departments", "company_id", "companies", "CASCADE"),
-            ("users", "company_id", "companies", "CASCADE"),
-            ("users", "department_id", "departments", "CASCADE"),
+            ("employees", "company_id", "companies", "CASCADE"),
+            ("employees", "department_id", "departments", "CASCADE"),
             ("meal_policies", "company_id", "companies", "CASCADE"),
-            ("meal_logs", "user_id", "users", "CASCADE"),
+            ("meal_logs", "user_id", "employees", "CASCADE"),
             ("meal_logs", "policy_id", "meal_policies", "CASCADE"),
-            ("meal_logs", "void_operator_id", "users", "SET NULL"),
-            ("audit_logs", "operator_id", "users", "SET NULL")
+            ("meal_logs", "void_operator_id", "employees", "SET NULL"),
+            ("audit_logs", "operator_id", "employees", "SET NULL")
         ]
 
         for table, col, ref_table, on_delete in fk_configs:

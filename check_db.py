@@ -12,7 +12,7 @@ async def check():
         tables = await conn.run_sync(get_tables)
         print(f"Existing tables: {tables}")
         
-        expected_tables = ["companies", "departments", "users", "meal_policies", "meal_logs"]
+        expected_tables = ["companies", "departments", "employees", "meal_policies", "meal_logs"]
         for t in expected_tables:
             if t not in tables:
                 print(f"MISSING TABLE: {t}")

@@ -26,7 +26,7 @@ class Department(Base):
     users = relationship("User", back_populates="department_ref")
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "employees"
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"))
     department_id = Column(Integer, ForeignKey("departments.id", ondelete="CASCADE"), nullable=True)
@@ -69,7 +69,7 @@ class MealPolicy(Base):
 class MealLog(Base):
     __tablename__ = "meal_logs"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    user_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"))
     policy_id = Column(Integer, ForeignKey("meal_policies.id", ondelete="CASCADE"))
     guest_count = Column(Integer, default=0)
     status = Column(String(20)) # ARRIVED, SERVED
@@ -79,7 +79,7 @@ class MealLog(Base):
     
     is_void = Column(Boolean, default=False)
     void_reason = Column(String(255), nullable=True)
-    void_operator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    void_operator_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
     voided_at = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -91,7 +91,7 @@ class MealLog(Base):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     id = Column(Integer, primary_key=True, index=True)
-    operator_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    operator_id = Column(Integer, ForeignKey("employees.id", ondelete="SET NULL"), nullable=True)
     action = Column(String(50)) # CREATE, UPDATE, DELETE, VOID, IMPORT
     target_table = Column(String(50))
     target_id = Column(Integer)

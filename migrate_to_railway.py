@@ -24,7 +24,7 @@ if not RAILWAY_URL:
     exit(1)
 
 # FK 순서대로 복사 (부모 -> 자식)
-TABLES = ["companies", "departments", "users", "meal_policies", "meal_logs", "audit_logs"]
+TABLES = ["companies", "departments", "employees", "meal_policies", "meal_logs", "audit_logs"]
 
 
 async def copy_table(local_conn, rail_conn, table):
