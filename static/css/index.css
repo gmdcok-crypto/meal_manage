@@ -43,7 +43,7 @@ body {
     overflow-x: hidden;
 }
 
-/* 이미지처럼 배경 위 어두운 반투명 오버레이 (투명하게) */
+/* 이미지처럼 배경 위 어두운 반투명 오버레이 (글자/박스 가독성 위해 충분히 어둡게) */
 body::before {
     content: '';
     position: fixed;
@@ -51,7 +51,7 @@ body::before {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(15, 23, 42, 0.25);
+    background: rgba(15, 23, 42, 0.65);
     pointer-events: none;
     z-index: 0;
 }
@@ -71,12 +71,12 @@ h1, h2, h3 {
 
 .glass-card,
 .card {
-    background: rgba(15, 23, 42, 0.78);
+    background: rgba(30, 41, 59, 0.92);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border-radius: 20px;
     padding: 24px;
-    border: 1px solid var(--glass-border);
+    border: 1px solid rgba(148, 163, 184, 0.2);
     transition: transform 0.2s ease, border-color 0.2s ease;
 }
 
@@ -98,13 +98,13 @@ h1, h2, h3 {
     flex-direction: column;
 }
 
-/* Input (백엔드 스타일 유지) */
+/* Input (백엔드 스타일 유지, 가독성 위해 덜 투명하게) */
 .input-field {
     width: 100%;
     padding: 16px;
     border-radius: 12px;
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    background: rgba(30, 41, 59, 0.92);
     color: var(--text-main);
     font-size: 16px;
     font-weight: 600;
@@ -249,6 +249,35 @@ p {
 .page.active {
     display: flex;
     flex-direction: column;
+}
+
+/* ========== 로그인(최초 인증) 페이지: 글자·박스 가독성 ========== */
+#page-login .login-card {
+    background: rgba(30, 41, 59, 0.94);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    padding: 28px 24px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    margin-bottom: 24px;
+}
+
+#page-login h1 {
+    color: #f8fafc;
+    font-size: 26px;
+    margin-bottom: 12px;
+}
+
+#page-login p {
+    color: #cbd5e1;
+    font-size: 15px;
+    line-height: 1.5;
+}
+
+#page-login .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 /* ========== 홈: 백엔드와 동일한 화면 구성 ========== */
