@@ -62,6 +62,7 @@ const app = {
         document.getElementById(pageId).classList.add('active');
         if (pageId === 'page-home') {
             this.startHomeClock();
+            this.loadNoticeContent();
         }
     },
 
@@ -78,6 +79,15 @@ const app = {
         };
         update();
         this.homeClockTimer = setInterval(update, 1000);
+    },
+
+    loadNoticeContent() {
+        const el = document.getElementById('home-notice-content');
+        if (!el) return;
+        fetch('notice.html?v=' + Date.now())
+            .then(r => r.text())
+            .then(html => { el.innerHTML = html; })
+            .catch(() => { el.innerHTML = '공지가 없습니다.'; });
     },
 
     async loginDevice() {

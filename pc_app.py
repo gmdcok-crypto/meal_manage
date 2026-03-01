@@ -8,13 +8,13 @@ import asyncio
 import websockets
 from datetime import datetime, date, timedelta, timezone
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QStackedWidget, QTableWidget, QTableWidgetItem,
     QLineEdit, QComboBox, QFrame, QHeaderView, QGraphicsDropShadowEffect,
-    QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout
+    QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout, QPlainTextEdit, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QTime, QDate, QByteArray
-from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap
+from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QResizeEvent
 
 # --- Config (override via env or edit for deployment) ---
 # 기본: Railway 백엔드 (가이드 예시 주소). 로컬 사용 시 MEAL_API_BASE_URL 으로 http://localhost:8000/api/admin 설정.
@@ -22,6 +22,9 @@ import os
 _DEFAULT_RAILWAY = "https://web-production-e758d.up.railway.app/api/admin"
 _API_BASE = os.environ.get("MEAL_API_BASE_URL", _DEFAULT_RAILWAY)
 API_BASE_URL = _API_BASE
+# PWA 공지사항 저장 경로 (프로젝트 static 폴더)
+_MEAL_MANAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
+NOTICE_HTML_PATH = os.path.join(_MEAL_MANAGE_ROOT, "static", "notice.html")
 _ws_origin = _API_BASE.replace("https://", "wss://").replace("http://", "ws://").split("/api")[0]
 WS_URL = _ws_origin + "/api/admin/ws"
 API_TIMEOUT = 10.0
@@ -99,6 +102,8 @@ QPushButton#MenuBtn:hover { background-color: #334155; color: #f8fafc; }
 QPushButton#MenuBtn[active="true"] { background-color: #6366f1; color: #ffffff; }
 QWidget#ContentArea { background-color: #0f172a; }
 QLabel#HeaderTitle { color: #f8fafc; font-size: 36px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QWidget#NoticeScreen QLabel#HeaderTitle { margin: 0; padding: 0; }
+QWidget#NoticeScreen QLabel#NoticeHint { margin: 0; padding: 0; }
 QFrame#StatCard { background-color: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 15px; }
 QLabel#StatValue { color: #f8fafc; font-size: 52px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QLabel#StatLabel { color: #94a3b8; font-size: 22px; font-weight: bold; font-family: 'Malgun Gothic'; }
@@ -109,7 +114,7 @@ QHeaderView::section { background-color: #111b2d; color: #94a3b8; padding: 12px;
 QLineEdit, QTimeEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 10px 15px; font-size: 19px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QDateEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding-left: 10px; padding-right: 30px; font-size: 19px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QDateEdit::up-button { subcontrol-origin: border; subcontrol-position: top right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top-right-radius: 8px; background-color: #334155; }
-QDateEdit::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top: 1px solid #475569; border-bottom-right-radius: 8px; background-color: #334155; }
+ㅍQDateEdit::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top: 1px solid #475569; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::drop-down { subcontrol-origin: border; subcontrol-position: top right; width: 26px; border-left: 1px solid #475569; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::down-arrow { image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgdmlld0JveD0iMCAwIDEwIDEwIj48cGF0aCBkPSJNMSAzIEg5IEw1IDggWiIgZmlsbD0iI2Y4ZmFmYyIvPjwvc3ZnPg=="); width: 12px; height: 12px; }
 QCalendarWidget QWidget { background-color: #1e293b; color: #f8fafc; font-family: 'Malgun Gothic'; }
@@ -601,16 +606,17 @@ class DashboardScreen(QWidget):
             user = row.get("user") or {}
             policy = row.get("policy") or {}
             ts = row.get("created_at", "")
-            # 서버(UTC) 기준 created_at → 항상 한국 시간(KST)으로 변환해 표시
+            # 서버가 내려주는 created_at: 타임존 없으면 이미 한국시간(KST) → 그대로 시간만 표시, 있으면 KST로 변환
             display_ts = ""
             try:
                 if isinstance(ts, str):
                     s = ts.replace("Z", "+00:00").strip().replace(" ", "T")
                     dt = datetime.fromisoformat(s)
                     if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=utc)
-                    dt_kst = dt.astimezone(kst)
-                    display_ts = dt_kst.strftime("%H:%M")
+                        # 타임존 없음 = 서버가 KST(naive)로 준 값 → 변환 없이 시간만 사용
+                        display_ts = dt.strftime("%H:%M")
+                    else:
+                        display_ts = dt.astimezone(kst).strftime("%H:%M")
                 elif hasattr(ts, "astimezone"):
                     dt = ts if ts.tzinfo else ts.replace(tzinfo=utc)
                     display_ts = dt.astimezone(kst).strftime("%H:%M")
@@ -618,15 +624,12 @@ class DashboardScreen(QWidget):
                     display_ts = str(ts)[:8] if ts else ""
             except Exception:
                 try:
-                    # 폴백: "YYYY-MM-DDTHH:MM:SS" 형태에서 UTC로 해석 후 KST 변환
                     if isinstance(ts, str) and "T" in ts:
-                        part = ts.split("T")[-1][:8]
-                        date_part = ts.split("T")[0]
-                        if date_part and part:
-                            dt = datetime.fromisoformat(f"{date_part}T{part}").replace(tzinfo=utc)
-                            display_ts = dt.astimezone(kst).strftime("%H:%M")
-                    if not display_ts and isinstance(ts, str):
-                        display_ts = ts.split("T")[-1][:5] if "T" in ts else ts.split(" ")[-1][:5] if " " in ts else str(ts)[:5]
+                        display_ts = ts.split("T")[-1][:5]
+                    elif isinstance(ts, str) and " " in ts:
+                        display_ts = ts.split(" ")[-1][:5]
+                    else:
+                        display_ts = str(ts)[:5] if ts else ""
                 except Exception:
                     display_ts = str(ts)[:5] if ts else ""
             self.recent_table.setItem(i, 0, QTableWidgetItem(display_ts[:5] if len(display_ts) >= 5 else display_ts))
@@ -2247,19 +2250,11 @@ class ReportScreen(QWidget):
         self.end_date_edit.setDate(QDate.currentDate())
         self.end_date_edit.setFixedWidth(180)
         
-        cond_label = QLabel("출력 조건")
-        cond_label.setObjectName("InputLabel")
+        self.dept_sub_combo = QComboBox()
+        self.dept_sub_combo.setFixedWidth(180)
+        self._refresh_dept_sub_combo()
+        self.dept_sub_combo.currentIndexChanged.connect(self.display_data)
         
-        self.condition_combo = QComboBox()
-        self.condition_combo.addItems(["개인별", "부서별", "전체", "상세 내역"])
-        self.condition_combo.setFixedWidth(160)
-        self.condition_combo.currentIndexChanged.connect(self.display_data)
-        
-        self.search_btn = QPushButton("조회")
-        self.search_btn.setObjectName("PrimaryBtn")
-        self.search_btn.setFixedWidth(100)
-        self.search_btn.clicked.connect(self.load_data)
-
         self.download_btn = QPushButton()
         self.download_btn.setObjectName("SecondaryBtn")
         self.download_btn.setToolTip("엑셀 다운로드")
@@ -2271,7 +2266,6 @@ class ReportScreen(QWidget):
         pixmap.loadFromData(excel_svg)
         self.download_btn.setIcon(QIcon(pixmap))
         self.download_btn.setIconSize(QSize(28, 28))
-        
         self.download_btn.clicked.connect(self.on_download_excel)
         
         controls_layout.addWidget(date_label)
@@ -2279,24 +2273,60 @@ class ReportScreen(QWidget):
         controls_layout.addWidget(tilde)
         controls_layout.addWidget(self.end_date_edit)
         controls_layout.addSpacing(20)
-        controls_layout.addWidget(cond_label)
-        controls_layout.addWidget(self.condition_combo)
+        controls_layout.addWidget(self.dept_sub_combo)
         controls_layout.addStretch()
-        controls_layout.addWidget(self.search_btn)
         controls_layout.addWidget(self.download_btn)
         
         layout.addWidget(controls_frame)
         
         # Table Area
-        self.table = QTableWidget(0, 7)
+        self.table = QTableWidget(0, 6)
         setup_standard_table(self.table)
-        layout.addWidget(self.table, 1) # Give stretch factor 1 to take remaining space
+        layout.addWidget(self.table, 1)  # stretch: 테이블이 남는 공간 차지
+
+        # 합계 표시 (테이블 바로 아래, 항상 맨 마지막에 고정)
+        footer_bar = QFrame()
+        footer_bar.setObjectName("ReportFooterBar")
+        footer_bar.setFixedHeight(40)
+        footer_bar.setStyleSheet("QFrame#ReportFooterBar { background: transparent; }")
+        footer_layout = QHBoxLayout(footer_bar)
+        footer_layout.setContentsMargins(8, 4, 8, 4)
+        footer_layout.addStretch()
+        self.report_footer_label = QLabel("합계: 0(0)")
+        self.report_footer_label.setObjectName("ReportFooterLabel")
+        self.report_footer_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.report_footer_label.setStyleSheet("font-weight: bold; padding: 4px 8px; color: #e2e8f0; font-size: 17px; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
+        footer_layout.addWidget(self.report_footer_label)
+        layout.addWidget(footer_bar)  # 테이블 다음에 추가 → 항상 하단
+
+    def _refresh_dept_sub_combo(self):
+        self.dept_sub_combo.clear()
+        self.dept_sub_combo.addItem("개인별", "INDIVIDUAL")   # 개인별 조회 → 개인별 집계 테이블
+        self.dept_sub_combo.addItem("전체부서", None)         # 전체부서/부서별 → 상세 리스트 테이블
+        depts = getattr(self.main_win, "departments_data", []) or []
+        seen = set()
+        for d in depts:
+            if isinstance(d, dict):
+                n = d.get("name") or "미지정"
+                if n not in seen:
+                    seen.add(n)
+                    self.dept_sub_combo.addItem(n, d.get("id"))
+        self.dept_sub_combo.setCurrentIndex(0)
+
+    def reset_report(self):
+        """다른 창 갔다 왔을 때 보고서 화면 초기화 (조회는 하지 않음)"""
+        self.full_data = []
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(0)
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["사번", "성명", "부서", "식사 횟수", "합계 식수", "총 금액"])
+        self.report_footer_label.setText("합계: 0(0)")
+        self.table.setSortingEnabled(True)
 
     def load_data(self):
         start = self.start_date_edit.date().toString("yyyy-MM-dd")
         end = self.end_date_edit.date().toString("yyyy-MM-dd")
         
-        self.search_btn.setEnabled(False)
         self.main_win.statusBar().showMessage("데이터 조회 중...", 3000)
         
         # Get raw data for the range
@@ -2305,7 +2335,6 @@ class ReportScreen(QWidget):
         self.loader.start()
 
     def on_data_loaded(self, data):
-        self.search_btn.setEnabled(True)
         if not isinstance(data, list): 
             QMessageBox.warning(self, "오류", "데이터를 가져오는데 실패했습니다.")
             return
@@ -2315,96 +2344,119 @@ class ReportScreen(QWidget):
         self.display_data()
 
     def display_data(self):
-        condition = self.condition_combo.currentText()
+        # 부서 콤보로 테이블 구분: 개인별 → 집계 테이블, 전체부서/부서별 → 상세 리스트 테이블
+        dept_id = self.dept_sub_combo.currentData()
+        data = self.full_data if dept_id in (None, "INDIVIDUAL") else [
+            log for log in self.full_data
+            if (log.get("user") or {}).get("department_id") == dept_id
+        ]
+
         self.table.setUpdatesEnabled(False)
+        self.table.setSortingEnabled(False)
         self.table.clearSelection()
-        
-        # Aggregation Logic
-        # Result structure: { "id_or_name": { "cnt": 0, "guest": 0, "total": 0, "amount": 0, "meta": {} } }
-        agg = {}
-        
-        for log in self.full_data:
-            u = log.get("user", {})
-            p = log.get("policy", {})
-            
-            # Identify grouping key
-            if condition == "개인별":
+
+        if dept_id == "INDIVIDUAL":
+            # 개인별 조회 → 사번, 성명, 부서, 식사 횟수, 합계 식수, 총 금액
+            self.table.setColumnCount(6)
+            self.table.setHorizontalHeaderLabels(["사번", "성명", "부서", "식사 횟수", "합계 식수", "총 금액"])
+            agg = {}
+            for log in data:
+                u = log.get("user") or {}
+                if not isinstance(u, dict):
+                    u = {}
                 key = u.get("id")
-                meta = {"no": u.get("emp_no"), "name": u.get("name"), "dept": u.get("department_name")}
-            elif condition == "부서별":
-                key = u.get("department_id") or "UNKNOWN_DEPT"
-                meta = {"name": u.get("department_name") or "미지정"}
-            elif condition == "전체": # 전체 (식사 종류별)
-                key = p.get("id") or "EXTRA"
-                meta = {"name": p.get("meal_type") or "번외"}
-            else: # 상세 내역
-                pass # Will handle separately
-                
-            if condition != "상세 내역":
+                if key is None:
+                    continue
                 if key not in agg:
-                    agg[key] = {"cnt": 0, "guest": 0, "total": 0, "amount": 0, "meta": meta}
-                
-                guest = log.get("guest_count", 0)
-                price = log.get("final_price", 0)
-                
+                    agg[key] = {"cnt": 0, "guest": 0, "total": 0, "amount": 0, "meta": {"no": u.get("emp_no"), "name": u.get("name"), "dept": u.get("department_name")}}
+                guest = log.get("guest_count") or log.get("guestCount") or 0
+                price = log.get("final_price") or log.get("finalPrice") or 0
+                try:
+                    guest = int(guest)
+                except (TypeError, ValueError):
+                    guest = 0
+                try:
+                    price = int(price)
+                except (TypeError, ValueError):
+                    price = 0
                 agg[key]["cnt"] += 1
                 agg[key]["guest"] += guest
                 agg[key]["total"] += (1 + guest)
-                agg[key]["amount"] += (price * (1 + guest))
-            
-        # Update Table Headers and Rows
-        if condition == "개인별":
-            self.table.setColumnCount(7)
-            self.table.setHorizontalHeaderLabels(["사번", "성명", "부서", "식사 횟수", "게스트", "합계 식수", "총 금액"])
-        elif condition == "부서별":
-            self.table.setColumnCount(5)
-            self.table.setHorizontalHeaderLabels(["부서명", "식사 횟수", "게스트", "합계 식수", "총 금액"])
-        elif condition == "전체":
-            self.table.setColumnCount(5)
-            self.table.setHorizontalHeaderLabels(["식사 종류", "식사 횟수", "게스트", "합계 식수", "총 금액"])
-        else: # 상세 내역
-            self.table.setColumnCount(5)
-            self.table.setHorizontalHeaderLabels(["사번", "이름", "부서", "식사종류", "날짜"])
-            
-        if condition == "상세 내역":
-            self.table.setRowCount(len(self.full_data))
-            # Sort full data by date descending for detailed view
-            sorted_logs = sorted(self.full_data, key=lambda x: x.get("created_at", ""), reverse=True)
-            for i, log in enumerate(sorted_logs):
-                u = log.get("user", {})
-                p = log.get("policy", {})
-                dt_str = log.get("created_at", "").replace("T", " ")[:16]
-                
-                self.table.setItem(i, 0, QTableWidgetItem(str(u.get("emp_no", ""))))
-                self.table.setItem(i, 1, QTableWidgetItem(str(u.get("name", ""))))
-                self.table.setItem(i, 2, QTableWidgetItem(str(u.get("department_name", ""))))
-                self.table.setItem(i, 3, QTableWidgetItem(str(p.get("meal_type", "번외"))))
-                self.table.setItem(i, 4, QTableWidgetItem(dt_str))
-        else:
-            self.table.setRowCount(len(agg))
-            # Sort keys by name for consistency
+                agg[key]["amount"] += price * (1 + guest)
             sorted_keys = sorted(agg.keys(), key=lambda k: str(agg[k]["meta"].get("name", "")))
-            
+            self.table.setRowCount(len(agg))
+            total_amount = 0
+            total_meals = 0
             for i, key in enumerate(sorted_keys):
                 item = agg[key]
                 meta = item["meta"]
-                
-                col = 0
-                if condition == "개인별":
-                    self.table.setItem(i, col, QTableWidgetItem(str(meta.get("no", "")))); col += 1
-                    self.table.setItem(i, col, QTableWidgetItem(str(meta.get("name", "")))); col += 1
-                    self.table.setItem(i, col, QTableWidgetItem(str(meta.get("dept", "")))); col += 1
-                else:
-                    self.table.setItem(i, col, QTableWidgetItem(str(meta.get("name", "")))); col += 1
-                    
-                self.table.setItem(i, col, QTableWidgetItem(f"{item['cnt']:,}")); col += 1
-                self.table.setItem(i, col, QTableWidgetItem(f"{item['guest']:,}")); col += 1
-                self.table.setItem(i, col, QTableWidgetItem(f"{item['total']:,}")); col += 1
-                
+                total_amount += item["amount"]
+                total_meals += item["total"]
+                self.table.setItem(i, 0, QTableWidgetItem(str(meta.get("no", ""))))
+                self.table.setItem(i, 1, QTableWidgetItem(str(meta.get("name", ""))))
+                self.table.setItem(i, 2, QTableWidgetItem(str(meta.get("dept", ""))))
+                self.table.setItem(i, 3, QTableWidgetItem(f"{item['cnt']:,}"))
+                self.table.setItem(i, 4, QTableWidgetItem(f"{item['total']:,}"))
                 amount_item = QTableWidgetItem(f"{item['amount']:,}원")
                 amount_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                self.table.setItem(i, col, amount_item)
+                self.table.setItem(i, 5, amount_item)
+            self.report_footer_label.setText(f"합계: {total_amount:,}({total_meals})")
+        else:
+            # 전체부서 / 부서별 조회 → 날짜, 시간, 식사명, 부서, 이름, 사번 (상세 리스트)
+            self.table.setColumnCount(6)
+            self.table.setHorizontalHeaderLabels(["날짜", "시간", "식사명", "부서", "이름", "사번"])
+            data = sorted(data, key=lambda log: log.get("created_at") or "")
+            total_amount = 0
+            total_meals = 0
+            for log in data:
+                guest = log.get("guest_count") or log.get("guestCount") or 0
+                price = log.get("final_price") or log.get("finalPrice") or 0
+                try:
+                    guest = int(guest)
+                except (TypeError, ValueError):
+                    guest = 0
+                try:
+                    price = int(price)
+                except (TypeError, ValueError):
+                    price = 0
+                total_amount += price * (1 + guest)
+                total_meals += (1 + guest)
+            self.table.setRowCount(len(data))
+            for i, log in enumerate(data):
+                u = log.get("user") or log.get("User") or {}
+                if not isinstance(u, dict):
+                    u = {}
+                created = log.get("created_at")
+                if isinstance(created, dict):
+                    date_part = str(created.get("date", created.get("date_time", ""))[:10])
+                    time_part = str(created.get("time", ""))[:8]
+                elif isinstance(created, str):
+                    created = created.strip()
+                    if "T" in created:
+                        date_part = created.split("T")[0]
+                        time_part = (created.split("T")[-1].replace("Z", "").strip())[:8]
+                    else:
+                        date_part = created[:10] if len(created) >= 10 else created
+                        time_part = ""
+                else:
+                    date_part = ""
+                    time_part = ""
+                meal_type = str((log.get("policy") or {}).get("meal_type") or "번외")
+                dept_name = u.get("department_name")
+                if not dept_name and isinstance(u.get("department"), dict):
+                    dept_name = (u.get("department") or {}).get("name")
+                dept_name = str(dept_name or log.get("department_name") or "")
+                name_str = str(u.get("name") or log.get("user_name") or "")
+                emp_no_str = str(u.get("emp_no") or u.get("empNo") or log.get("emp_no") or "")
+                self.table.setItem(i, 0, QTableWidgetItem(date_part))
+                self.table.setItem(i, 1, QTableWidgetItem(time_part))
+                self.table.setItem(i, 2, QTableWidgetItem(meal_type))
+                self.table.setItem(i, 3, QTableWidgetItem(dept_name))
+                self.table.setItem(i, 4, QTableWidgetItem(name_str))
+                self.table.setItem(i, 5, QTableWidgetItem(emp_no_str))
+            self.report_footer_label.setText(f"합계: {total_amount:,}({total_meals})")
 
+        self.table.setSortingEnabled(True)
         self.table.setUpdatesEnabled(True)
 
     def update_meal_type_summary(self):
@@ -2412,21 +2464,113 @@ class ReportScreen(QWidget):
         pass
 
     def on_download_excel(self):
-        # Specific year/month download for official reports
-        curr_date = self.end_date_edit.date()
-        year = curr_date.year()
-        month = curr_date.month()
-        
-        from PyQt5.QtWidgets import QFileDialog
-        save_path, _ = QFileDialog.getSaveFileName(self, "보고서 저장", f"MealReport_{year}{month:02d}.xlsx", "Excel Files (*.xlsx)")
-        if not save_path: return
-        
-        self.download_btn.setEnabled(False)
-        self.dl_loader = DataLoader(self.api.get_excel_report_data, year, month)
-        self.dl_loader.finished.connect(lambda data: self.on_download_finished(data, save_path))
-        self.dl_loader.start()
+        # 현재 보고서 테이블을 엑셀 파일로 생성 후 열기 → 사용자가 보면서 직접 저장
+        import os
+        import tempfile
+        import subprocess
+        import sys
+
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, Alignment
+        except ImportError:
+            QMessageBox.warning(self, "오류", "엑셀 저장을 위해 openpyxl이 필요합니다.\npip install openpyxl")
+            return
+
+        dept_id = self.dept_sub_combo.currentData()
+        if dept_id == "INDIVIDUAL":
+            title = "개인별 보고서"
+        elif dept_id is None:
+            title = "전체부서 보고서"
+        else:
+            title = self.dept_sub_combo.currentText() + " 보고서"
+
+        start_str = self.start_date_edit.date().toString("yyyy-MM-dd")
+        end_str = self.end_date_edit.date().toString("yyyy-MM-dd")
+        period_str = f"조회기간: {start_str} ~ {end_str}"
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "보고서"
+
+        col_count = self.table.columnCount()
+
+        # 1행: 타이틀 (전체 병합, 가운데, 글자 크게)
+        if col_count > 1:
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col_count)
+        c1 = ws.cell(row=1, column=1, value=title)
+        c1.font = Font(bold=True, size=16)
+        c1.alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 32
+
+        # 2행: 첫 컬럼에 조회기간
+        ws.cell(row=2, column=1, value=period_str)
+
+        # 3행: 헤더
+        for c in range(col_count):
+            h = self.table.horizontalHeaderItem(c)
+            ws.cell(row=3, column=c + 1, value=h.text() if h else "")
+        header_font = Font(bold=True)
+        for c in range(1, col_count + 1):
+            ws.cell(row=3, column=c).font = header_font
+
+        # 데이터 행
+        for r in range(self.table.rowCount()):
+            for c in range(col_count):
+                item = self.table.item(r, c)
+                val = item.text() if item else ""
+                ws.cell(row=r + 4, column=c + 1, value=val)
+
+        # 합계 행 (우측 정렬)
+        footer_text = self.report_footer_label.text()
+        next_row = self.table.rowCount() + 4
+        right_align = Alignment(horizontal="right", vertical="center")
+
+        if dept_id == "INDIVIDUAL":
+            fc = ws.cell(row=next_row, column=1, value=footer_text)
+            fc.font = Font(bold=True)
+            fc.alignment = right_align
+            if col_count > 1:
+                ws.merge_cells(start_row=next_row, start_column=1, end_row=next_row, end_column=col_count)
+                ws.cell(row=next_row, column=1).alignment = right_align
+        else:
+            parts = footer_text.split(" ", 1)
+            label_part = parts[0] if parts else "합계:"
+            value_part = parts[1] if len(parts) > 1 else ""
+            for col_idx, val in enumerate([label_part, value_part], start=col_count - 1):
+                cell = ws.cell(row=next_row, column=col_idx, value=val)
+                cell.font = Font(bold=True)
+                cell.alignment = right_align
+
+        # A4 양식에 맞춘 컬럼 너비 (조회기간이 첫 컬럼에 들어가도록)
+        if col_count == 6:
+            widths = [24, 10, 8, 10, 10, 10]  # 첫 컬럼 24로 조회기간 수용
+        else:
+            widths = [12] * (col_count - 1) + [24]
+        for i, w in enumerate(widths[:col_count], start=1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = w
+
+        # 임시 파일로 저장 후 엑셀 열기 (저장은 사용자가 엑셀에서 수행)
+        try:
+            fd, save_path = tempfile.mkstemp(suffix=".xlsx", prefix="MealReport_")
+            os.close(fd)
+            wb.save(save_path)
+        except Exception as e:
+            QMessageBox.warning(self, "오류", f"엑셀 파일 생성 실패:\n{e}")
+            return
+
+        try:
+            if sys.platform == "win32":
+                os.startfile(save_path)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", save_path], check=True)
+            else:
+                subprocess.run(["xdg-open", save_path], check=True)
+        except Exception:
+            pass
 
     def on_download_finished(self, data, save_path):
+        """레거시: API 엑셀 다운로드 완료 (현재는 사용 안 함)"""
         self.download_btn.setEnabled(True)
         if data:
             with open(save_path, "wb") as f:
@@ -2434,6 +2578,87 @@ class ReportScreen(QWidget):
             QMessageBox.information(self, "성공", f"Excel 보고서가 저장되었습니다.\n{save_path}")
         else:
             QMessageBox.warning(self, "오류", "Excel 보고서 다운로드에 실패했습니다.")
+
+
+class NoticeScreen(QWidget):
+    """PWA 공지사항 편집 화면. static/notice.html에 저장하면 PWA 홈에서 표시됨."""
+    DEFAULT_NOTICE = """• 오늘 점심 메뉴는 제육볶음과 된장국입니다.<br>
+• 12시 30분부터 배식 시작합니다. 현장 도착 시 QR 스캔 부탁드립니다.<br>
+• 문의사항은 식당 담당자(내선 1234)로 연락 주세요."""
+
+    def __init__(self, main_win=None):
+        super().__init__()
+        self.main_win = main_win
+        self.notice_path = NOTICE_HTML_PATH
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        self.setObjectName("NoticeScreen")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 10, 24, 10)
+        layout.setSpacing(0)
+
+        title_block = QWidget()
+        title_block.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        title_layout = QVBoxLayout(title_block)
+        title_layout.setContentsMargins(0, 0, 0, 0)
+        title_layout.setSpacing(0)
+
+        header = QLabel("PWA 공지사항")
+        header.setObjectName("HeaderTitle")
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setFixedHeight(40)
+        title_layout.addWidget(header)
+        hint = QLabel("아래 내용이 PWA 홈 화면의 공지사항 영역에 표시됩니다. 줄바꿈은 그대로 반영되며, <br> 입력 시 HTML 줄바꿈으로 표시됩니다.")
+        hint.setObjectName("NoticeHint")
+        hint.setWordWrap(True)
+        hint.setContentsMargins(0, 0, 0, 0)
+        hint.setStyleSheet("color: #94a3b8; font-size: 16px;")
+        title_layout.addWidget(hint)
+
+        layout.addWidget(title_block)
+        layout.addSpacing(4)
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setPlaceholderText("공지 내용을 입력하세요...")
+        self.text_edit.setMinimumHeight(120)
+        self.text_edit.setMaximumHeight(120)
+        self.text_edit.setMinimumWidth(400)
+        self.text_edit.setMaximumWidth(400)
+        self.text_edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.text_edit.setStyleSheet("""
+            QPlainTextEdit { background-color: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 8px; padding: 12px; font-size: 17px; }
+        """)
+        layout.addWidget(self.text_edit, 0, Qt.AlignLeft)
+
+        layout.addSpacing(4)
+        self.save_btn = QPushButton("저장")
+        self.save_btn.setObjectName("PrimaryBtn")
+        self.save_btn.setFixedWidth(120)
+        self.save_btn.clicked.connect(self.save_notice)
+        layout.addWidget(self.save_btn, 0, Qt.AlignLeft)
+
+        self.load_notice()
+
+    def load_notice(self):
+        if os.path.isfile(self.notice_path):
+            try:
+                with open(self.notice_path, "r", encoding="utf-8") as f:
+                    self.text_edit.setPlainText(f.read())
+            except Exception:
+                self.text_edit.setPlainText(self.DEFAULT_NOTICE)
+        else:
+            self.text_edit.setPlainText(self.DEFAULT_NOTICE)
+
+    def save_notice(self):
+        content = self.text_edit.toPlainText().strip()
+        static_dir = os.path.dirname(self.notice_path)
+        try:
+            os.makedirs(static_dir, exist_ok=True)
+            with open(self.notice_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            QMessageBox.information(self, "저장 완료", "공지사항이 저장되었습니다.\nPWA를 새로고침하면 반영됩니다.")
+        except Exception as e:
+            QMessageBox.warning(self, "오류", f"저장 실패:\n{e}")
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -2443,14 +2668,13 @@ class MainWindow(QMainWindow):
         self.departments_data = []
         self.setWindowTitle("Meal Auth - Admin Management System")
         self.resize(1280, 850)
-        # 화면 가용 영역 안으로 제한 (Windows setGeometry 경고 방지)
+        # 화면 가용 영역 안으로 초기 크기만 제한 (이후 사용자가 창 크기 조절 가능)
         screen = QApplication.primaryScreen()
         if screen:
             available = screen.availableGeometry()
             w = min(self.width(), available.width())
             h = min(self.height(), available.height())
             self.resize(w, h)
-            self.setMaximumSize(available.width(), available.height())
         self.setStyleSheet(QSS)
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -2467,7 +2691,7 @@ class MainWindow(QMainWindow):
         self.nav_btns = []
         menus = [
             ("대시보드", 0), ("회사 관리", 1), ("부서 관리", 2), 
-            ("사원 관리", 3), ("원시 데이터", 4), ("식사 정책", 5), ("보고서", 6)
+            ("사원 관리", 3), ("원시 데이터", 4), ("식사 정책", 5), ("보고서", 6), ("공지사항", 7)
         ]
         for name, idx in menus:
             btn = QPushButton(name)
@@ -2489,6 +2713,7 @@ class MainWindow(QMainWindow):
         self.raw_data = RawDataScreen(self.api, self)
         self.policies = PolicyScreen(self.api, self)
         self.reports = ReportScreen(self.api, self)
+        self.notice_screen = NoticeScreen(self)
         self.stack.addWidget(self.dashboard)
         self.stack.addWidget(self.companies)
         self.stack.addWidget(self.departments)
@@ -2496,6 +2721,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.raw_data)
         self.stack.addWidget(self.policies)
         self.stack.addWidget(self.reports)
+        self.stack.addWidget(self.notice_screen)
         self.content_layout.addWidget(self.stack)
         main_layout.addWidget(content_container)
         self.switch_screen(0)
@@ -2508,6 +2734,19 @@ class MainWindow(QMainWindow):
         self.ws_client = WSClient()
         self.ws_client.message_received.connect(self.on_ws_message)
         self.ws_client.start()
+
+    def resizeEvent(self, event):
+        """창 크기가 화면 가용 영역을 넘지 않도록 제한 (setGeometry 경고 방지)"""
+        screen = QApplication.primaryScreen()
+        if screen:
+            available = screen.availableGeometry()
+            w = event.size().width()
+            h = event.size().height()
+            if w > available.width() or h > available.height():
+                w = min(w, available.width())
+                h = min(h, available.height())
+                event = QResizeEvent(QSize(w, h), event.oldSize())
+        super().resizeEvent(event)
 
     def on_ws_message(self, data):
         msg_type = data.get("type")
@@ -2539,6 +2778,7 @@ class MainWindow(QMainWindow):
                 self.departments.load_data()
             if self.stack.currentIndex() == 3:
                 self.employees.update_dept_combo()
+            self.reports._refresh_dept_sub_combo()
 
     def refresh_stats(self):
         self.refresh_active_screen()
@@ -2592,7 +2832,11 @@ class MainWindow(QMainWindow):
         if idx == 3: self.employees.load_data()
         if idx == 4: pass # Explicit search only
         if idx == 5: self.policies.load_data()
-        if idx == 6: self.reports.load_data()
+        if idx == 6:
+            self.reports._refresh_dept_sub_combo()
+            self.reports.load_data()
+        if idx == 7:
+            self.notice_screen.load_notice()
 
     def closeEvent(self, event):
         if hasattr(self, 'ws_client'):
