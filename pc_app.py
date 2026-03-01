@@ -17,8 +17,13 @@ from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QTime, QDate, Q
 from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap
 
 # --- Config (override via env or edit for deployment) ---
-API_BASE_URL = "http://localhost:8000/api/admin"
-WS_URL = "ws://localhost:8000/api/admin/ws"
+# 기본: Railway 백엔드 (가이드 예시 주소). 로컬 사용 시 MEAL_API_BASE_URL 으로 http://localhost:8000/api/admin 설정.
+import os
+_DEFAULT_RAILWAY = "https://web-production-e758d.up.railway.app/api/admin"
+_API_BASE = os.environ.get("MEAL_API_BASE_URL", _DEFAULT_RAILWAY)
+API_BASE_URL = _API_BASE
+_ws_origin = _API_BASE.replace("https://", "wss://").replace("http://", "ws://").split("/api")[0]
+WS_URL = _ws_origin + "/api/admin/ws"
 API_TIMEOUT = 10.0
 
 # --- WebSocket Client Thread ---
