@@ -3,7 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.core.database import get_db
 from app.models.models import MealLog, User, MealPolicy, Department
-from datetime import date, datetime
+from app.core.time_utils import kst_date_range_to_utc_naive, utc_to_kst_str
+from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 router = APIRouter(tags=["reports"])
@@ -13,13 +14,17 @@ async def get_daily_report(
     target_date: date,
     db: AsyncSession = Depends(get_db)
 ):
-    # Total counts by meal type (policy) for a specific day
+    start_utc, end_utc = kst_date_range_to_utc_naive(target_date, target_date)
     query = select(
         MealPolicy.meal_type,
         func.count(MealLog.id).label("employee_count"),
         func.sum(MealLog.guest_count).label("guest_count")
     ).join(MealLog, MealPolicy.id == MealLog.policy_id)\
-     .where(and_(func.date(MealLog.created_at) == target_date, MealLog.is_void == False))\
+     .where(and_(
+        MealLog.created_at >= start_utc,
+        MealLog.created_at < end_utc,
+        MealLog.is_void == False
+    ))\
      .group_by(MealPolicy.meal_type)
     
     result = await db.execute(query)
@@ -31,24 +36,35 @@ async def get_monthly_report(
     month: int,
     db: AsyncSession = Depends(get_db)
 ):
-    # Summary for a whole month
     start_date = date(year, month, 1)
-    if month == 12: end_date = date(year + 1, 1, 1)
-    else: end_date = date(year, month + 1, 1)
-    
-    query = select(
-        func.date(MealLog.created_at).label("date"),
-        func.count(MealLog.id).label("employee_count"),
-        func.sum(MealLog.guest_count).label("guest_count"),
-        func.sum(MealLog.final_price * (1 + MealLog.guest_count)).label("total_amount")
-    ).where(and_(
-        MealLog.created_at >= datetime.combine(start_date, datetime.min.time()),
-        MealLog.created_at < datetime.combine(end_date, datetime.min.time()),
+    end_date = date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
+    end_date_last = end_date - timedelta(days=1)  # 해당 월 마지막 날
+    start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date_last)
+
+    # created_at은 UTC → 일자별 집계는 KST 날짜 기준으로 (Python에서 그룹핑)
+    query = select(MealLog).where(and_(
+        MealLog.created_at >= start_utc,
+        MealLog.created_at < end_utc,
         MealLog.is_void == False
-    )).group_by(func.date(MealLog.created_at))
-    
+    ))
     result = await db.execute(query)
-    return [dict(row._asdict()) for row in result.all()]
+    logs = result.scalars().all()
+
+    from collections import defaultdict
+    by_date = defaultdict(lambda: {"employee_count": 0, "guest_count": 0, "total_amount": 0})
+    for log in logs:
+        kst_date_str = (utc_to_kst_str(log.created_at) or "")[:10]
+        if not kst_date_str:
+            continue
+        by_date[kst_date_str]["employee_count"] += 1
+        by_date[kst_date_str]["guest_count"] += (log.guest_count or 0)
+        by_date[kst_date_str]["total_amount"] += (log.final_price or 0) * (1 + (log.guest_count or 0))
+
+    return [
+        {"date": d, "employee_count": v["employee_count"], "guest_count": v["guest_count"], "total_amount": v["total_amount"]}
+        for d in sorted(by_date.keys())
+        for v in [by_date[d]]
+    ]
 
 @router.get("/department")
 async def get_department_report(
@@ -56,7 +72,7 @@ async def get_department_report(
     end_date: date,
     db: AsyncSession = Depends(get_db)
 ):
-    # Breakdown by department
+    start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date)
     query = select(
         Department.name.label("department_name"),
         func.count(MealLog.id).label("count"),
@@ -64,13 +80,14 @@ async def get_department_report(
     ).join(MealLog, User.id == MealLog.user_id)\
      .join(Department, User.department_id == Department.id)\
      .where(and_(
-        MealLog.created_at >= datetime.combine(start_date, datetime.min.time()),
-        MealLog.created_at <= datetime.combine(end_date, datetime.max.time()),
+        MealLog.created_at >= start_utc,
+        MealLog.created_at < end_utc,
         MealLog.is_void == False
      )).group_by(Department.name)
      
     result = await db.execute(query)
     return [dict(row._asdict()) for row in result.all()]
+
 @router.get("/excel")
 async def get_excel_report(
     year: int,
@@ -83,16 +100,16 @@ async def get_excel_report(
     from sqlalchemy.orm import joinedload
     
     start_date = date(year, month, 1)
-    if month == 12: end_date = date(year + 1, 1, 1)
-    else: end_date = date(year, month + 1, 1)
+    end_date = date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
+    end_date_last = end_date - timedelta(days=1)
+    start_utc, end_utc = kst_date_range_to_utc_naive(start_date, end_date_last)
     
-    # 1. Fetch all relevant logs
     query = select(MealLog).options(
         joinedload(MealLog.user).joinedload(User.department_ref),
         joinedload(MealLog.policy)
     ).where(and_(
-        MealLog.created_at >= datetime.combine(start_date, datetime.min.time()),
-        MealLog.created_at < datetime.combine(end_date, datetime.min.time()),
+        MealLog.created_at >= start_utc,
+        MealLog.created_at < end_utc,
         MealLog.is_void == False
     ))
     
@@ -103,11 +120,12 @@ async def get_excel_report(
         # Return empty excel or handle as needed
         pass
 
-    # Prepare data for DataFrames
+    # Prepare data for DataFrames (날짜는 KST 기준 표시)
     data = []
     for log in logs:
+        kst_date_str = (utc_to_kst_str(log.created_at) or "")[:10]
         data.append({
-            "날짜": log.created_at.date(),
+            "날짜": kst_date_str or (log.created_at.date() if log.created_at else ""),
             "사번": log.user.emp_no if log.user else "N/A",
             "이름": log.user.name if log.user else "N/A",
             "부서": log.user.department_name if log.user else "N/A",

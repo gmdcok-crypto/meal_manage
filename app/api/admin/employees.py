@@ -9,6 +9,8 @@ from .utils import record_audit_log
 from typing import List, Optional
 from datetime import datetime
 
+from app.core.time_utils import utc_now
+
 router = APIRouter(tags=["employees"])
 
 @router.get("", response_model=List[UserResponse])
@@ -106,7 +108,7 @@ async def update_employee(
     
     update_data = user_in.dict(exclude_unset=True)
     if update_data.get("status") == "RESIGNED" and user.status != "RESIGNED":
-        update_data["resigned_at"] = datetime.now()
+        update_data["resigned_at"] = utc_now()
     elif update_data.get("status") == "ACTIVE" and user.status == "RESIGNED":
         update_data["resigned_at"] = None
 
@@ -153,7 +155,7 @@ async def delete_employee_soft(
         # Soft delete: mark as RESIGNED (default)
         before_status = user.status
         user.status = "RESIGNED"
-        user.resigned_at = datetime.now()
+        user.resigned_at = utc_now()
 
         await record_audit_log(
             db, operator_id, "RESIGN", "employees", user.id,

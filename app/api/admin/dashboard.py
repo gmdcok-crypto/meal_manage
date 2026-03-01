@@ -4,6 +4,7 @@ from sqlalchemy import select, func, and_
 from app.core.database import get_db
 from app.models.models import MealLog, MealPolicy, User
 from app.schemas.schemas import DashboardStats
+from app.core.time_utils import kst_now, kst_today, kst_date_range_utc_naive
 from datetime import date, datetime
 from typing import List
 
@@ -11,10 +12,10 @@ router = APIRouter(tags=["dashboard"])
 
 @router.get("/today", response_model=DashboardStats)
 async def get_today_stats(db: AsyncSession = Depends(get_db)):
-    today = date.today()
+    today = kst_today()
     
-    # Determined meal type (Simplified for now: based on current hour)
-    hour = datetime.now().hour
+    # Determined meal type (한국 시간 기준)
+    hour = kst_now().hour
     if hour < 10: meal_type_key = "breakfast"
     elif hour < 16: meal_type_key = "lunch"
     else: meal_type_key = "dinner"
@@ -24,8 +25,12 @@ async def get_today_stats(db: AsyncSession = Depends(get_db)):
     policy_result = await db.execute(policy_query)
     policies = policy_result.scalars().all()
     
-    # Get all logs for today
-    log_query = select(MealLog).where(func.date(MealLog.created_at) == today)
+    # Get all logs for today (한국 기준 오늘, created_at은 UTC로 저장됨)
+    start_utc, end_utc = kst_date_range_utc_naive()
+    log_query = select(MealLog).where(
+        MealLog.created_at >= start_utc,
+        MealLog.created_at < end_utc
+    )
     log_result = await db.execute(log_query)
     logs = log_result.scalars().all()
     

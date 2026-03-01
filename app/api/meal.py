@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.models import MealPolicy, User, MealLog
 from app.schemas.schemas import MealPolicyResponse
+from app.core.time_utils import kst_now, utc_now, utc_to_kst_str
 
 router = APIRouter(prefix="/meal", tags=["meal"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/verify_device")
@@ -52,9 +53,7 @@ async def process_qr_scan(
     db: AsyncSession = Depends(get_db)
 ):
     # 식사 정책 시간은 한국 시간(KST, UTC+9) 기준으로 비교 (Railway 등 서버가 UTC여도 동일 동작)
-    from datetime import datetime, timezone, timedelta
-    kst = timezone(timedelta(hours=9))
-    now_time = datetime.now(kst).time()
+    now_time = kst_now().time()
 
     # 식사 시간 범위 내에 있는 정책 검색
     result = await db.execute(
@@ -81,7 +80,8 @@ async def process_qr_scan(
         guest_count=0,
         status="ARRIVED",
         path="QR",
-        final_price=policy.base_price
+        final_price=policy.base_price,
+        created_at=utc_now()
     )
     db.add(new_log)
     await db.commit()
@@ -103,7 +103,7 @@ async def process_qr_scan(
         "status": "success",
         "message": "식수 인증이 완료되었습니다.",
         "log_id": new_log.id,
-        "auth_time": new_log.created_at.strftime("%H:%M:%S") if new_log.created_at else "00:00:00",
+        "auth_time": (utc_to_kst_str(new_log.created_at) or "").split("T")[-1][:8] if new_log.created_at else "00:00:00",
         "user": {
             "name": current_user.name,
             "emp_no": current_user.emp_no,

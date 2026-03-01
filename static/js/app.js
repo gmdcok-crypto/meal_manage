@@ -308,8 +308,7 @@ const app = {
         const lastAt = this.state.lastAuthAt || (localStorage.getItem('meal_lastAuthAt') && parseInt(localStorage.getItem('meal_lastAuthAt'), 10));
         const fiveMinMs = 5 * 60 * 1000;
         if (lastAt && (Date.now() - lastAt > fiveMinMs)) {
-            this.state.lastAuthAt = null;
-            try { localStorage.removeItem('meal_lastAuthAt'); } catch (e) {}
+            // lastAuthAt은 유지 (지우면 다음에 다시보기 시 lastAt이 없어져 5분이 리셋되는 버그 방지)
             alert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. QR 스캔을 다시 해주세요.");
             this.goHome();
             return;

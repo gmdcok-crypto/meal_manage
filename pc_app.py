@@ -1727,8 +1727,8 @@ class RawDataScreen(QWidget):
             self.table.setItem(i, 3, QTableWidgetItem(str(row.get("user", {}).get("name", ""))))
             self.table.setItem(i, 4, QTableWidgetItem(str(row.get("user", {}).get("emp_no", ""))))
             
-            # Dynamic Meal Type based on time
-            meal_type = self.get_meal_type_by_time(time_part)
+            # 식사종류: 서버에서 내려준 해당 로그의 policy.meal_type 사용 (시간 재계산 시 번외로 바뀌는 현상 방지)
+            meal_type = str(row.get("policy", {}).get("meal_type", "") or "번외")
             item_type = QTableWidgetItem(meal_type)
             if meal_type == "번외":
                 item_type.setForeground(QColor("#94a3b8")) # Gray color for extra

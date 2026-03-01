@@ -1,6 +1,8 @@
 from datetime import datetime, time, date
 from typing import Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
+
+from app.core.time_utils import utc_to_kst_str
 
 # User Schemas
 class UserBase(BaseModel):
@@ -63,7 +65,11 @@ class MealLogResponse(BaseModel):
     is_void: bool
     void_reason: Optional[str] = None
     created_at: datetime
-    
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, dt: datetime) -> str:
+        return utc_to_kst_str(dt) or ""
+
     class Config:
         from_attributes = True
 
