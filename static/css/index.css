@@ -500,3 +500,13 @@ p {
     min-height: 44px;
     font-size: 16px;
 }
+.alert-dialog-buttons {
+    display: flex;
+    gap: 12px;
+    margin-top: 8px;
+}
+.alert-dialog-buttons .btn {
+    flex: 1;
+    min-height: 44px;
+    font-size: 16px;
+}
