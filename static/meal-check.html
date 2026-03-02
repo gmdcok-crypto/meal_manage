@@ -19,7 +19,6 @@
         .meal-check-page tr:last-child td { border-bottom: none; }
         .meal-check-page .empty { text-align: center; color: var(--text-muted); padding: 32px; }
         .meal-check-page .err { color: var(--danger); padding: 16px; }
-        .meal-check-page .url-note { margin-top: 24px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 12px; color: var(--text-muted); word-break: break-all; }
     </style>
 </head>
 <body>
@@ -41,7 +40,6 @@
             <div id="result-empty" class="empty" style="display: none;">검색어를 입력 후 조회하세요.</div>
             <div id="result-err" class="err" style="display: none;"></div>
         </div>
-        <div class="url-note" id="url-note">접속 주소: <span id="current-url"></span></div>
     </div>
     <script>
         (function() {
@@ -52,9 +50,6 @@
             var tbody = document.getElementById('result-body');
             var emptyEl = document.getElementById('result-empty');
             var errEl = document.getElementById('result-err');
-            var urlSpan = document.getElementById('current-url');
-
-            urlSpan.textContent = window.location.origin + window.location.pathname;
 
             function showResult(data) {
                 errEl.style.display = 'none';
