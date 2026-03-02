@@ -477,6 +477,25 @@ class APIClient:
             return (True, r.json()) if r.status_code == 200 else (False, r.json().get("detail", "초기화 실패"))
         except Exception as e: return (False, str(e))
 
+    def get_notice(self):
+        """공지 내용 조회 (백엔드 API)."""
+        try:
+            r = self.client.get(f"{self.base_url}/notice")
+            if r.status_code == 200:
+                data = r.json()
+                return data.get("content", "") or ""
+            return ""
+        except Exception:
+            return ""
+
+    def save_notice_api(self, content: str):
+        """공지 내용 저장 (백엔드 API). content는 <br> 포함해 PWA에서 줄바꿈 표시."""
+        try:
+            r = self.client.put(f"{self.base_url}/notice", json={"content": content})
+            return r.status_code == 200
+        except Exception:
+            return False
+
     def close(self):
         self.client.close()
 
@@ -2594,70 +2613,72 @@ class NoticeScreen(QWidget):
         self.setObjectName("NoticeScreen")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 10, 24, 10)
+        layout.setContentsMargins(24, 0, 24, 10)
         layout.setSpacing(0)
 
-        title_block = QWidget()
-        title_block.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
-        title_layout = QVBoxLayout(title_block)
-        title_layout.setContentsMargins(0, 0, 0, 0)
-        title_layout.setSpacing(0)
+        content_block = QWidget()
+        content_block.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
+        block_layout = QVBoxLayout(content_block)
+        block_layout.setContentsMargins(0, 0, 0, 0)
+        block_layout.setSpacing(0)
 
         header = QLabel("PWA 공지사항")
         header.setObjectName("HeaderTitle")
         header.setContentsMargins(0, 0, 0, 0)
         header.setFixedHeight(40)
-        title_layout.addWidget(header)
+        block_layout.addWidget(header)
+        block_layout.addSpacing(20)
         hint = QLabel("아래 내용이 PWA 홈 화면의 공지사항 영역에 표시됩니다. 줄바꿈은 그대로 반영되며, <br> 입력 시 HTML 줄바꿈으로 표시됩니다.")
         hint.setObjectName("NoticeHint")
         hint.setWordWrap(True)
         hint.setContentsMargins(0, 0, 0, 0)
-        hint.setStyleSheet("color: #94a3b8; font-size: 16px;")
-        title_layout.addWidget(hint)
+        hint.setStyleSheet("color: #94a3b8; font-size: 16px; font-weight: bold;")
+        block_layout.addWidget(hint)
 
-        layout.addWidget(title_block)
-        layout.addSpacing(4)
+        block_layout.addSpacing(4)
         self.text_edit = QPlainTextEdit()
         self.text_edit.setPlaceholderText("공지 내용을 입력하세요...")
-        self.text_edit.setMinimumHeight(120)
-        self.text_edit.setMaximumHeight(120)
-        self.text_edit.setMinimumWidth(400)
-        self.text_edit.setMaximumWidth(400)
-        self.text_edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.text_edit.setFixedSize(400, 200)
         self.text_edit.setStyleSheet("""
-            QPlainTextEdit { background-color: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 8px; padding: 12px; font-size: 17px; }
+            QPlainTextEdit { background-color: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 8px; padding: 12px 12px 2px 12px; font-size: 17px; }
         """)
-        layout.addWidget(self.text_edit, 0, Qt.AlignLeft)
-
-        layout.addSpacing(4)
+        block_layout.addWidget(self.text_edit, 0, Qt.AlignLeft)
+        block_layout.addSpacing(2)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
         self.save_btn = QPushButton("저장")
         self.save_btn.setObjectName("PrimaryBtn")
         self.save_btn.setFixedWidth(120)
         self.save_btn.clicked.connect(self.save_notice)
-        layout.addWidget(self.save_btn, 0, Qt.AlignLeft)
+        btn_row.addWidget(self.save_btn)
+        btn_wrapper = QWidget()
+        btn_wrapper.setFixedWidth(400)
+        btn_wrapper.setLayout(btn_row)
+        block_layout.addWidget(btn_wrapper, 0, Qt.AlignLeft)
+
+        layout.addWidget(content_block, 0, Qt.AlignTop)
 
         self.load_notice()
 
     def load_notice(self):
-        if os.path.isfile(self.notice_path):
-            try:
-                with open(self.notice_path, "r", encoding="utf-8") as f:
-                    self.text_edit.setPlainText(f.read())
-            except Exception:
-                self.text_edit.setPlainText(self.DEFAULT_NOTICE)
-        else:
-            self.text_edit.setPlainText(self.DEFAULT_NOTICE)
+        """백엔드 API에서 공지 로드. 저장된 <br>는 편집용으로 \\n으로 표시."""
+        api = getattr(self.main_win, "api", None) if self.main_win else None
+        if api:
+            raw = api.get_notice()
+            if raw:
+                self.text_edit.setPlainText(raw.replace("<br>", "\n").replace("<br/>", "\n").replace("<br />", "\n"))
+                return
+        self.text_edit.setPlainText(self.DEFAULT_NOTICE)
 
     def save_notice(self):
         content = self.text_edit.toPlainText().strip()
-        static_dir = os.path.dirname(self.notice_path)
-        try:
-            os.makedirs(static_dir, exist_ok=True)
-            with open(self.notice_path, "w", encoding="utf-8") as f:
-                f.write(content)
-            QMessageBox.information(self, "저장 완료", "공지사항이 저장되었습니다.\nPWA를 새로고침하면 반영됩니다.")
-        except Exception as e:
-            QMessageBox.warning(self, "오류", f"저장 실패:\n{e}")
+        # 줄바꿈을 <br>로 보내서 PWA에서 그대로 표시되도록
+        content_html = content.replace("\n", "<br>")
+        api = getattr(self.main_win, "api", None) if self.main_win else None
+        if api and api.save_notice_api(content_html):
+            QMessageBox.information(self, "저장 완료", "공지사항이 백엔드에 저장되었습니다.\nPWA를 새로고침하면 반영됩니다.")
+        else:
+            QMessageBox.warning(self, "오류", "저장 실패: 백엔드 연결을 확인해 주세요.")
 
 
 class MainWindow(QMainWindow):

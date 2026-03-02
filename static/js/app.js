@@ -86,7 +86,7 @@ const app = {
         if (!el) return;
         fetch('notice.html?v=' + Date.now())
             .then(r => r.text())
-            .then(html => { el.innerHTML = html; })
+            .then(html => { el.innerHTML = html.replace(/\n/g, '<br>'); })
             .catch(() => { el.innerHTML = '공지가 없습니다.'; });
     },
 
