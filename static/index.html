@@ -148,7 +148,11 @@
                     window.deferredPrompt.prompt();
                     window.deferredPrompt.userChoice.then(function() { banner.style.display = 'none'; });
                 } else {
-                    banner.innerHTML = '<p>브라우저 메뉴(⋮)에서 "홈 화면에 추가" 또는 "앱 설치"를 선택해 주세요.</p><button type="button" class="install-banner-close" onclick="this.closest(\'.install-banner\').style.display=\'none\'">×</button>';
+                    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    var msg = isIOS
+                        ? '아이폰·아이패드: Safari 하단의 <strong>공유(□↑)</strong> 버튼을 누른 뒤 <strong>「홈 화면에 추가」</strong>를 선택해 주세요.'
+                        : '브라우저 메뉴(<strong>⋮</strong>)에서 <strong>「홈 화면에 추가」</strong> 또는 <strong>「앱 설치」</strong>를 선택해 주세요.';
+                    banner.innerHTML = '<p>' + msg + '</p><button type="button" class="install-banner-close" onclick="this.closest(\'.install-banner\').style.display=\'none\'">×</button>';
                 }
             };
         })();
