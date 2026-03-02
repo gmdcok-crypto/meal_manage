@@ -127,6 +127,14 @@
         </div>
     </div>
 
+    <!-- 커스텀 알림 모달 (PWA·크롬 동일 스타일) -->
+    <div id="alert-overlay" class="alert-overlay" aria-hidden="true">
+        <div class="alert-dialog">
+            <p id="alert-message" class="alert-message"></p>
+            <button type="button" class="btn btn-primary alert-confirm" id="alert-confirm">확인</button>
+        </div>
+    </div>
+
     <!-- 배포 시 새 버전이면 ?v= 숫자만 올려서 캐시 갱신 -->
     <script src="js/app.js?v=1"></script>
     <script>

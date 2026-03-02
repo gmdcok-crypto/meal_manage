@@ -457,3 +457,46 @@ p {
 #reader {
     border-color: var(--primary) !important;
 }
+
+/* 커스텀 알림 모달 (alert 대체, PWA·크롬 동일 표시) */
+.alert-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.85);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+.alert-overlay[aria-hidden="false"] {
+    display: flex;
+}
+.alert-dialog {
+    background: rgba(30, 41, 59, 0.98);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    padding: 28px 24px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    max-width: 360px;
+    width: 100%;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+.alert-message {
+    color: var(--text-main);
+    font-size: 16px;
+    line-height: 1.5;
+    margin-bottom: 24px;
+    white-space: pre-wrap;
+    word-break: keep-all;
+}
+.alert-dialog .alert-confirm {
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+}

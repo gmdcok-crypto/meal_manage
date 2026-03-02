@@ -1,3 +1,19 @@
+/* 커스텀 알림: PWA·크롬 동일 스타일, 도메인/내용 라벨 없음 */
+function showAlert(message, onConfirm) {
+    var overlay = document.getElementById('alert-overlay');
+    var msgEl = document.getElementById('alert-message');
+    var btn = document.getElementById('alert-confirm');
+    if (!overlay || !msgEl || !btn) return;
+    msgEl.textContent = message;
+    overlay.setAttribute('aria-hidden', 'false');
+    var handler = function () {
+        btn.onclick = null;
+        overlay.setAttribute('aria-hidden', 'true');
+        if (typeof onConfirm === 'function') onConfirm();
+    };
+    btn.onclick = handler;
+}
+
 const app = {
     state: {
         isLoggedIn: false,
@@ -37,13 +53,11 @@ const app = {
                     return;
                 }
                 // 서버 오류 등
-                alert("서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
-                this.showPage('page-login');
+                showAlert("서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.", function () { app.showPage('page-login'); });
                 return;
             } catch (e) {
                 console.error("Auth status check failed:", e);
-                alert("연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
-                this.showPage('page-login');
+                showAlert("연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.", function () { app.showPage('page-login'); });
                 return;
             }
         }
@@ -106,7 +120,7 @@ const app = {
         const password = document.getElementById('login-password').value.trim();
 
         if (!empNo || !name || !password) {
-            alert("사번, 이름, 초기 비밀번호를 모두 입력해주세요.");
+            showAlert("사번, 이름, 초기 비밀번호를 모두 입력해주세요.");
             return;
         }
 
@@ -134,13 +148,12 @@ const app = {
                 this.state.user = data.user;
                 this.updateUserInfoUI();
 
-                alert("기기 인증이 완료되었습니다. 이제 스캔 버튼을 눌러주세요.");
-                this.showPage('page-home');
+                showAlert("기기 인증이 완료되었습니다. 이제 스캔 버튼을 눌러주세요.", function () { app.showPage('page-home'); });
             } else {
-                alert(data.detail || "인증에 실패했습니다.");
+                showAlert(data.detail || "인증에 실패했습니다.");
             }
         } catch (e) {
-            alert("서버 연결 실패: " + e.message);
+            showAlert("서버 연결 실패: " + e.message);
         }
     },
 
@@ -161,8 +174,7 @@ const app = {
     async openQrScanner() {
         const token = localStorage.getItem('meal_token');
         if (!token) {
-            alert("기기 인증 정보가 없습니다. 다시 로그인해주세요.");
-            this.logout();
+            showAlert("기기 인증 정보가 없습니다. 다시 로그인해주세요.", function () { app.logout(); });
             return;
         }
 
@@ -187,8 +199,7 @@ const app = {
             );
         } catch (err) {
             console.error("Camera error:", err);
-            alert("보안 정책(HTTPS 미사용)으로 인해 카메라를 시작할 수 없습니다. HTTPS 환경에서 다시 시도해 주세요.");
-            this.showPage('page-home');
+            showAlert("보안 정책(HTTPS 미사용)으로 인해 카메라를 시작할 수 없습니다. HTTPS 환경에서 다시 시도해 주세요.", function () { app.showPage('page-home'); });
         }
     },
 
@@ -221,13 +232,14 @@ const app = {
             } catch (jsonErr) {
                 // 서버가 HTML을 반환한 경우 (경로 오류·ngrok·404 페이지 등)
                 if (text && text.trim().toLowerCase().startsWith('<!doctype')) {
-                    alert(
+                    showAlert(
                         "서버 연동 오류: API가 HTML을 반환했습니다.\n\n" +
-                        "• 접속 주소와 서버 상태를 확인해 주세요."
+                        "• 접속 주소와 서버 상태를 확인해 주세요.",
+                        function () { app.showPage('page-home'); }
                     );
                 } else {
                     console.error("JSON parse error. Raw response:", text);
-                    alert("서버 연동 오류: 응답 형식이 올바르지 않습니다.");
+                    showAlert("서버 연동 오류: 응답 형식이 올바르지 않습니다.", function () { app.showPage('page-home'); });
                 }
                 this.showPage('page-home');
                 return;
@@ -252,16 +264,13 @@ const app = {
                 this.startAuth();
             } else {
                 if (res.status === 401 || res.status === 403) {
-                    alert("기기가 초기화되었거나 인증이 만료되었습니다. 다시 로그인(재인증)해 주세요.");
-                    this.logout();
+                    showAlert("기기가 초기화되었거나 인증이 만료되었습니다. 다시 로그인(재인증)해 주세요.", function () { app.logout(); });
                 } else {
-                    alert(data.detail || "식수 인증에 실패했습니다.");
+                    showAlert(data.detail || "식수 인증에 실패했습니다.", function () { app.showPage('page-home'); });
                 }
-                this.showPage('page-home');
             }
         } catch (e) {
-            alert("서버 연동 오류: " + e.message);
-            this.showPage('page-home');
+            showAlert("서버 연동 오류: " + e.message, function () { app.showPage('page-home'); });
         }
     },
 
@@ -307,8 +316,7 @@ const app = {
             if (remainingMs <= 0) {
                 clearInterval(this.authCountdownTimer);
                 this.authCountdownTimer = null;
-                alert("인증 시간이 만료되었습니다. 다시 시도해주세요.");
-                this.goHome();
+                showAlert("인증 시간이 만료되었습니다. 다시 시도해주세요.", function () { app.goHome(); });
             }
         };
         update();
@@ -322,15 +330,13 @@ const app = {
     // 확인 후 또는 화면을 닫았다가 다시 인증 화면을 보여줄 때 사용 (5분 지나면 표시 안 함)
     showAuthScreen() {
         if (!this.state.user) {
-            alert("인증된 사용자 정보가 없습니다. QR 스캔을 먼저 해주세요.");
+            showAlert("인증된 사용자 정보가 없습니다. QR 스캔을 먼저 해주세요.");
             return;
         }
         const lastAt = this.state.lastAuthAt || (localStorage.getItem('meal_lastAuthAt') && parseInt(localStorage.getItem('meal_lastAuthAt'), 10));
         const fiveMinMs = 5 * 60 * 1000;
         if (lastAt && (Date.now() - lastAt > fiveMinMs)) {
-            // lastAuthAt은 유지 (지우면 다음에 다시보기 시 lastAt이 없어져 5분이 리셋되는 버그 방지)
-            alert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. 담당자에게 문의 해주세요.");
-            this.goHome();
+            showAlert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. 담당자에게 문의 해주세요.", function () { app.goHome(); });
             return;
         }
         const u = this.state.user;
