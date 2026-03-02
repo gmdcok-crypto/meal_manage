@@ -27,7 +27,7 @@ async def list_employees(
     if status:
         filters.append(User.status == status)
     
-    # Exclude system admin from regular employee list
+    # Exclude system placeholder from employee list (식당관리는 cafeteria_admins 테이블로 분리)
     filters.append(User.emp_no != "admin")
     if search:
         filters.append(or_(

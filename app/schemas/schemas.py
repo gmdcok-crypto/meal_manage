@@ -20,6 +20,28 @@ class UserUpdate(BaseModel):
     department_id: Optional[int] = None
     status: Optional[str] = None
 
+
+class AdminCreate(BaseModel):
+    emp_no: str
+    name: str
+
+
+class AdminUpdate(BaseModel):
+    name: Optional[str] = None
+
+
+class CafeteriaAdminResponse(BaseModel):
+    """식당관리(위탁사 운영자) 응답. PC 관리자 메뉴용."""
+    id: int
+    emp_no: str
+    name: str
+    is_verified: bool = False
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 class UserResponse(UserBase):
     id: int
     company_id: Optional[int] = None

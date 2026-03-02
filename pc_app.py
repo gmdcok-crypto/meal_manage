@@ -496,6 +496,43 @@ class APIClient:
         except Exception:
             return False
 
+    def get_admins(self):
+        try:
+            r = self.client.get(f"{self.base_url}/admins")
+            return r.json() if r.status_code == 200 else []
+        except Exception:
+            return []
+
+    def create_admin(self, emp_no: str, name: str):
+        try:
+            r = self.client.post(f"{self.base_url}/admins", json={"emp_no": emp_no, "name": name})
+            if r.status_code == 200:
+                return (True, r.json())
+            return (False, (r.json() or {}).get("detail", "등록 실패"))
+        except Exception as e:
+            return (False, str(e))
+
+    def update_admin(self, user_id: int, name: str):
+        try:
+            r = self.client.put(f"{self.base_url}/admins/{user_id}", json={"name": name})
+            return (r.status_code == 200, (r.json() or {}).get("detail", "수정 실패") if r.status_code != 200 else None)
+        except Exception as e:
+            return (False, str(e))
+
+    def delete_admin(self, user_id: int):
+        try:
+            r = self.client.delete(f"{self.base_url}/admins/{user_id}")
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    def reset_admin_device(self, user_id: int):
+        try:
+            r = self.client.post(f"{self.base_url}/admins/{user_id}/reset-device")
+            return r.status_code == 200
+        except Exception:
+            return False
+
     def close(self):
         self.client.close()
 
@@ -2681,6 +2718,182 @@ class NoticeScreen(QWidget):
             QMessageBox.warning(self, "오류", "저장 실패: 백엔드 연결을 확인해 주세요.")
 
 
+class AdminScreen(QWidget):
+    """관리자 등록·수정·삭제·기기 초기화. 테이블: 사번, 이름, 인증."""
+    def __init__(self, api, main_win):
+        super().__init__()
+        self.api = api
+        self.main_win = main_win
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+
+        header_layout = QHBoxLayout()
+        header = QLabel("관리자")
+        header.setObjectName("HeaderTitle")
+        header_layout.addWidget(header)
+        header_layout.addStretch()
+        layout.addLayout(header_layout)
+
+        # 입력 행: 사번, 이름, 등록, 수정, 삭제, 기기 초기화
+        input_row = QHBoxLayout()
+        input_row.setSpacing(12)
+        self.emp_no_input = QLineEdit()
+        self.emp_no_input.setPlaceholderText("사번")
+        self.emp_no_input.setFixedWidth(180)
+        self.emp_no_input.setMinimumHeight(44)
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("이름")
+        self.name_input.setFixedWidth(180)
+        self.name_input.setMinimumHeight(44)
+        input_row.addWidget(self.emp_no_input)
+        input_row.addWidget(self.name_input)
+        input_row.addSpacing(8)
+
+        self.add_btn = QPushButton("등록")
+        self.add_btn.setObjectName("PrimaryBtn")
+        self.add_btn.setFixedWidth(100)
+        self.add_btn.setMinimumHeight(44)
+        self.add_btn.clicked.connect(self.on_add)
+        self.edit_btn = QPushButton("수정")
+        self.edit_btn.setObjectName("SecondaryBtn")
+        self.edit_btn.setFixedWidth(100)
+        self.edit_btn.setMinimumHeight(44)
+        self.edit_btn.clicked.connect(self.on_edit)
+        self.del_btn = QPushButton("삭제")
+        self.del_btn.setObjectName("DangerBtn")
+        self.del_btn.setFixedWidth(100)
+        self.del_btn.setMinimumHeight(44)
+        self.del_btn.clicked.connect(self.on_delete)
+        self.reset_btn = QPushButton("기기 초기화")
+        self.reset_btn.setObjectName("SecondaryBtn")
+        self.reset_btn.setFixedWidth(120)
+        self.reset_btn.setMinimumHeight(44)
+        self.reset_btn.clicked.connect(self.on_reset_device)
+
+        input_row.addWidget(self.add_btn)
+        input_row.addWidget(self.edit_btn)
+        input_row.addWidget(self.del_btn)
+        input_row.addWidget(self.reset_btn)
+        input_row.addStretch()
+        layout.addLayout(input_row)
+
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["사번", "이름", "인증"])
+        setup_standard_table(self.table)
+        self.table.itemSelectionChanged.connect(self._on_selection_changed)
+        layout.addWidget(self.table, 1)
+
+    def load_data(self):
+        self.loader = DataLoader(self.api.get_admins)
+        self.loader.finished.connect(self.on_loaded)
+        self.loader.start()
+
+    def on_loaded(self, data):
+        if not isinstance(data, list):
+            return
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(data))
+        for i, row in enumerate(data):
+            rid = row.get("id")
+            self.table.setItem(i, 0, QTableWidgetItem(str(row.get("emp_no") or "")))
+            self.table.setItem(i, 1, QTableWidgetItem(str(row.get("name") or "")))
+            is_verified = row.get("is_verified", False)
+            auth_text = "O" if is_verified else "X"
+            item = QTableWidgetItem(auth_text)
+            item.setData(Qt.UserRole, rid)
+            if is_verified:
+                item.setForeground(QColor("#10b981"))
+            else:
+                item.setForeground(QColor("#ef4444"))
+            self.table.setItem(i, 2, item)
+        self.table.setSortingEnabled(True)
+
+    def _selected_row_id(self):
+        sel = self.table.selectedItems()
+        if not sel:
+            return None
+        row = sel[0].row()
+        item = self.table.item(row, 2)
+        if item:
+            return item.data(Qt.UserRole)
+        return None
+
+    def _on_selection_changed(self):
+        """테이블 선택 시 사번·이름 입력창에 해당 행 값 표시."""
+        rid = self._selected_row_id()
+        if rid is None:
+            return
+        sel = self.table.selectedItems()
+        if not sel:
+            return
+        r = sel[0].row()
+        emp_no = (self.table.item(r, 0).text() or "").strip()
+        name = (self.table.item(r, 1).text() or "").strip()
+        self.emp_no_input.setText(emp_no)
+        self.name_input.setText(name)
+
+    def on_add(self):
+        emp_no = self.emp_no_input.text().strip()
+        name = self.name_input.text().strip()
+        if not emp_no:
+            QMessageBox.warning(self, "입력 오류", "사번을 입력하세요.")
+            return
+        if not name:
+            QMessageBox.warning(self, "입력 오류", "이름을 입력하세요.")
+            return
+        success, result = self.api.create_admin(emp_no, name)
+        if success:
+            QMessageBox.information(self, "등록 완료", "관리자가 등록되었습니다.\n폰에서 최초 로그인 시 비밀번호를 설정해 주세요.")
+            self.emp_no_input.clear()
+            self.name_input.clear()
+            self.load_data()
+        else:
+            QMessageBox.warning(self, "오류", str(result))
+
+    def on_edit(self):
+        rid = self._selected_row_id()
+        if rid is None:
+            QMessageBox.warning(self, "선택 필요", "수정할 행을 선택하세요.")
+            return
+        name = self.name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "입력 오류", "이름을 입력하세요.")
+            return
+        success, detail = self.api.update_admin(rid, name)
+        if success:
+            QMessageBox.information(self, "수정 완료", "수정되었습니다.")
+            self.load_data()
+        else:
+            QMessageBox.warning(self, "오류", detail or "수정 실패")
+
+    def on_delete(self):
+        rid = self._selected_row_id()
+        if rid is None:
+            QMessageBox.warning(self, "선택 필요", "삭제할 행을 선택하세요.")
+            return
+        if QMessageBox.question(self, "삭제 확인", "이 관리자를 삭제하시겠습니까?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        if self.api.delete_admin(rid):
+            QMessageBox.information(self, "삭제 완료", "삭제되었습니다.")
+            self.load_data()
+        else:
+            QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
+
+    def on_reset_device(self):
+        rid = self._selected_row_id()
+        if rid is None:
+            QMessageBox.warning(self, "선택 필요", "기기 초기화할 행을 선택하세요.")
+            return
+        if QMessageBox.question(self, "기기 초기화", "해당 관리자의 기기 인증을 초기화합니다.\n다음 로그인 시 비밀번호를 다시 입력해야 합니다. 계속하시겠습니까?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        if self.api.reset_admin_device(rid):
+            QMessageBox.information(self, "초기화 완료", "기기 인증이 초기화되었습니다.")
+            self.load_data()
+        else:
+            QMessageBox.warning(self, "오류", "초기화에 실패했습니다.")
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -2711,8 +2924,8 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(logo)
         self.nav_btns = []
         menus = [
-            ("대시보드", 0), ("회사 관리", 1), ("부서 관리", 2), 
-            ("사원 관리", 3), ("원시 데이터", 4), ("식사 정책", 5), ("보고서", 6), ("공지사항", 7)
+            ("대시보드", 0), ("회사 관리", 1), ("부서 관리", 2),
+            ("사원 관리", 3), ("원시 데이터", 4), ("식사 정책", 5), ("보고서", 6), ("공지사항", 7), ("관리자", 8)
         ]
         for name, idx in menus:
             btn = QPushButton(name)
@@ -2735,6 +2948,7 @@ class MainWindow(QMainWindow):
         self.policies = PolicyScreen(self.api, self)
         self.reports = ReportScreen(self.api, self)
         self.notice_screen = NoticeScreen(self)
+        self.admin_screen = AdminScreen(self.api, self)
         self.stack.addWidget(self.dashboard)
         self.stack.addWidget(self.companies)
         self.stack.addWidget(self.departments)
@@ -2743,6 +2957,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.policies)
         self.stack.addWidget(self.reports)
         self.stack.addWidget(self.notice_screen)
+        self.stack.addWidget(self.admin_screen)
         self.content_layout.addWidget(self.stack)
         main_layout.addWidget(content_container)
         self.switch_screen(0)
@@ -2858,6 +3073,8 @@ class MainWindow(QMainWindow):
             self.reports.load_data()
         if idx == 7:
             self.notice_screen.load_notice()
+        if idx == 8:
+            self.admin_screen.load_data()
 
     def closeEvent(self, event):
         if hasattr(self, 'ws_client'):

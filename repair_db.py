@@ -2,7 +2,7 @@ import asyncio
 from sqlalchemy import text, create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.core.database import engine, Base, SessionLocal
-from app.models.models import User
+from app.models.models import User, CafeteriaAdmin
 from app.core.config import settings
 
 async def repair():
@@ -37,7 +37,23 @@ async def repair():
         # 3. Ensure tables exist (recreates employees table if deleted)
         await conn.run_sync(Base.metadata.create_all)
         print("Schema ensured (tables created/verified).")
-        
+
+        # 3-1. 식당관리 전용 테이블 (create_all에 안 잡힐 수 있어 명시 생성)
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS cafeteria_admins (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    emp_no VARCHAR(50) NOT NULL UNIQUE,
+                    name VARCHAR(100) NOT NULL,
+                    password_hash VARCHAR(255),
+                    is_verified TINYINT(1) DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("Ensured 'cafeteria_admins' table.")
+        except Exception as e:
+            print(f"Note: cafeteria_admins: {e}")
+
         # 4. Check and add/remove columns for data consistency
         # Add 'code' to companies if missing
         try:
@@ -61,6 +77,12 @@ async def repair():
         try:
             await conn.execute(text("ALTER TABLE employees ADD COLUMN password_hash VARCHAR(255)"))
             print("Ensured 'password_hash' column in employees")
+        except: pass
+
+        # Ensure 'is_admin' in employees (관리자 메뉴용)
+        try:
+            await conn.execute(text("ALTER TABLE employees ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            print("Ensured 'is_admin' column in employees")
         except: pass
 
         # Ensure 'policy_id' in meal_logs (rename menu_id if exists)
