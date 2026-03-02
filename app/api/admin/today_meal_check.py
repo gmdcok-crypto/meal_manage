@@ -45,7 +45,7 @@ async def today_meal_check(
     logs = result.scalars().all()
     out = []
     for log in logs:
-        time_str = log.created_at.strftime("%H:%M:%S") if log.created_at else ""
+        time_str = log.created_at.strftime("%H:%M") if log.created_at else ""
         meal_type = (log.policy.meal_type if log.policy else "번외") or "번외"
         out.append({
             "time": time_str,
