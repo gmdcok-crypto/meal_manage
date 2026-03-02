@@ -31,11 +31,21 @@ const app = {
                         return;
                     }
                 }
+                // 401/403만 로그아웃(토큰 삭제). 그 외는 네트워크 재시도 유도
+                if (res.status === 401 || res.status === 403) {
+                    this.logout();
+                    return;
+                }
+                // 서버 오류 등
+                alert("서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+                this.showPage('page-login');
+                return;
             } catch (e) {
                 console.error("Auth status check failed:", e);
+                alert("연결할 수 없습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.");
+                this.showPage('page-login');
+                return;
             }
-            this.logout();
-            return;
         }
         this.showPage('page-login');
     },
