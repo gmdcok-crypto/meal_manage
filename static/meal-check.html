@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>당일 식사인증 조회</title>
+    <link rel="stylesheet" href="css/index.css">
+    <style>
+        .meal-check-page { max-width: 480px; margin: 0 auto; padding: 24px; }
+        .meal-check-page h1 { font-size: 22px; margin-bottom: 8px; }
+        .meal-check-page .sub { color: var(--text-muted); font-size: 14px; margin-bottom: 20px; }
+        .meal-check-page .search-box { display: flex; gap: 8px; margin-bottom: 20px; }
+        .meal-check-page .search-box input { flex: 1; padding: 12px 16px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.3); background: rgba(30,41,59,0.9); color: #f8fafc; font-size: 16px; }
+        .meal-check-page .search-box button { padding: 12px 20px; border-radius: 10px; background: var(--accent-blue); color: white; border: none; font-weight: 600; cursor: pointer; }
+        .meal-check-page .date-display { color: var(--text-muted); font-size: 14px; margin-bottom: 16px; }
+        .meal-check-page table { width: 100%; border-collapse: collapse; background: rgba(30,41,59,0.6); border-radius: 12px; overflow: hidden; }
+        .meal-check-page th, .meal-check-page td { padding: 12px 16px; text-align: left; border-bottom: 1px solid rgba(148,163,184,0.15); }
+        .meal-check-page th { background: rgba(15,23,42,0.6); color: var(--text-muted); font-size: 12px; text-transform: uppercase; }
+        .meal-check-page tr:last-child td { border-bottom: none; }
+        .meal-check-page .empty { text-align: center; color: var(--text-muted); padding: 32px; }
+        .meal-check-page .err { color: var(--danger); padding: 16px; }
+        .meal-check-page .url-note { margin-top: 24px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 12px; color: var(--text-muted); word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="meal-check-page container">
+        <h1>당일 식사인증 조회</h1>
+        <p class="sub">사원 이름 또는 사번으로 오늘(한국시간) 식사인증 여부를 조회합니다.</p>
+        <div class="search-box">
+            <input type="text" id="q" placeholder="이름 또는 사번 입력" autocomplete="off">
+            <button type="button" id="btn-search">조회</button>
+        </div>
+        <div class="date-display" id="date-display"></div>
+        <div id="result">
+            <table id="result-table" style="display: none;">
+                <thead>
+                    <tr><th>시간</th><th>식사종류</th><th>이름</th><th>사번</th></tr>
+                </thead>
+                <tbody id="result-body"></tbody>
+            </table>
+            <div id="result-empty" class="empty" style="display: none;">검색어를 입력 후 조회하세요.</div>
+            <div id="result-err" class="err" style="display: none;"></div>
+        </div>
+        <div class="url-note" id="url-note">접속 주소: <span id="current-url"></span></div>
+    </div>
+    <script>
+        (function() {
+            var qEl = document.getElementById('q');
+            var btn = document.getElementById('btn-search');
+            var dateEl = document.getElementById('date-display');
+            var table = document.getElementById('result-table');
+            var tbody = document.getElementById('result-body');
+            var emptyEl = document.getElementById('result-empty');
+            var errEl = document.getElementById('result-err');
+            var urlSpan = document.getElementById('current-url');
+
+            urlSpan.textContent = window.location.origin + window.location.pathname;
+
+            function showResult(data) {
+                errEl.style.display = 'none';
+                emptyEl.style.display = 'none';
+                dateEl.textContent = '조회일: ' + (data.date || '') + ' (한국시간 오늘)';
+                var items = data.items || [];
+                if (items.length === 0) {
+                    emptyEl.textContent = '당일 인증 기록이 없습니다.';
+                    emptyEl.style.display = 'block';
+                    table.style.display = 'none';
+                    return;
+                }
+                table.style.display = 'table';
+                tbody.innerHTML = items.map(function(row) {
+                    return '<tr><td>' + (row.time || '') + '</td><td>' + (row.meal_type || '') + '</td><td>' + (row.name || '') + '</td><td>' + (row.emp_no || '') + '</td></tr>';
+                }).join('');
+            }
+
+            function showErr(msg) {
+                table.style.display = 'none';
+                emptyEl.style.display = 'none';
+                errEl.textContent = msg || '조회 실패';
+                errEl.style.display = 'block';
+            }
+
+            function doSearch() {
+                var q = (qEl.value || '').trim();
+                var url = '/api/admin/today-meal-check';
+                if (q) url += '?q=' + encodeURIComponent(q);
+                dateEl.textContent = '조회 중...';
+                table.style.display = 'none';
+                emptyEl.style.display = 'none';
+                errEl.style.display = 'none';
+                fetch(url)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.items !== undefined) showResult(data);
+                        else showErr(data.detail || '응답 형식 오류');
+                    })
+                    .catch(function(e) {
+                        showErr('연결 실패: ' + (e.message || '네트워크 확인'));
+                    });
+            }
+
+            btn.addEventListener('click', doSearch);
+            qEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(); });
+            dateEl.textContent = '이름 또는 사번을 입력한 뒤 조회하세요. (한국시간 오늘 기준)';
+        })();
+    </script>
+</body>
+</html>
