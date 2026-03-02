@@ -1,11 +1,12 @@
-"""당일(한국시간) 식사인증 조회 API. 관리자 폰 PWA용."""
+"""당일(한국시간) 식사인증 조회 API. 관리자 폰 PWA용. 식당관리자 로그인 필수."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import joinedload
 from app.core.database import get_db
-from app.models.models import MealLog, User, MealPolicy
+from app.models.models import MealLog, User, MealPolicy, CafeteriaAdmin
 from app.core.time_utils import kst_today, kst_date_range_to_naive
+from app.api.auth import get_current_admin
 from typing import List, Optional
 
 router = APIRouter()
@@ -14,7 +15,8 @@ router = APIRouter()
 @router.get("/today-meal-check")
 async def today_meal_check(
     q: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    admin: CafeteriaAdmin = Depends(get_current_admin)
 ):
     """한국시간 오늘 기준, 사원이름 또는 사번으로 식사인증 조회. 시간·식사종류 반환."""
     start_naive, end_naive = kst_date_range_to_naive(kst_today(), kst_today())

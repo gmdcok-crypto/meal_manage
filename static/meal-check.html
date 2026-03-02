@@ -20,11 +20,39 @@
         .meal-check-page td.name-cell { min-width: 5em; word-break: keep-all; }
         .meal-check-page .empty { text-align: center; color: var(--text-muted); padding: 32px; }
         .meal-check-page .err { color: var(--danger); padding: 16px; }
+        #screen-login .login-card { max-width: 360px; margin: 0 auto 20px; padding: 24px; background: rgba(30,41,59,0.8); border-radius: 12px; border: 1px solid rgba(148,163,184,0.2); }
+        #screen-login .login-card h1 { font-size: 20px; margin-bottom: 8px; }
+        #screen-login .input-field { width: 100%; box-sizing: border-box; padding: 12px 16px; margin-bottom: 12px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.3); background: rgba(15,23,42,0.9); color: #f8fafc; font-size: 16px; }
+        #screen-login .btn-login { width: 100%; padding: 14px; border-radius: 10px; background: var(--accent-blue); color: white; border: none; font-weight: 600; font-size: 16px; cursor: pointer; }
+        #screen-main { display: none; }
+        #screen-main.active { display: block; }
+        #screen-login { display: none; }
+        #screen-login.active { display: block; }
+        .meal-check-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .meal-check-header .logout-btn { padding: 8px 14px; border-radius: 8px; background: rgba(148,163,184,0.2); color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); font-size: 14px; cursor: pointer; }
     </style>
 </head>
 <body>
-    <div class="meal-check-page container">
-        <h1>당일 식사인증 조회</h1>
+    <!-- 로그인 화면 (최초 또는 로그아웃 후) -->
+    <div id="screen-login" class="meal-check-page container">
+        <div class="login-card">
+            <h1>당일 식사인증 조회</h1>
+            <p class="sub">식당관리자만 이용할 수 있습니다. 사번·이름·비밀번호로 로그인하세요.</p>
+            <input type="text" id="login-emp-no" class="input-field" placeholder="사번" autocomplete="off">
+            <input type="text" id="login-name" class="input-field" placeholder="이름" autocomplete="off">
+            <input type="password" id="login-password" class="input-field" placeholder="비밀번호 (최초 접속 시 설정)">
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">* 최초 접속 시 비밀번호를 설정하며, 기기 초기화 후에는 다시 설정해야 합니다.</p>
+            <button type="button" id="btn-login" class="btn-login">로그인</button>
+            <p id="login-err" style="color: var(--danger); font-size: 14px; margin-top: 10px; display: none;"></p>
+        </div>
+    </div>
+
+    <!-- 조회 화면 (로그인 후) -->
+    <div id="screen-main" class="meal-check-page container">
+        <div class="meal-check-header">
+            <h1>당일 식사인증 조회</h1>
+            <button type="button" class="logout-btn" id="btn-logout">로그아웃</button>
+        </div>
         <p class="sub">사원 이름 또는 사번으로 오늘(한국시간) 식사인증 여부를 조회합니다.</p>
         <div class="search-box">
             <input type="text" id="q" placeholder="이름 또는 사번 입력" autocomplete="off">
@@ -42,15 +70,43 @@
             <div id="result-err" class="err" style="display: none;"></div>
         </div>
     </div>
+
     <script>
         (function() {
+            var TOKEN_KEY = 'meal_admin_token';
+            var screenLogin = document.getElementById('screen-login');
+            var screenMain = document.getElementById('screen-main');
+            var loginEmpNo = document.getElementById('login-emp-no');
+            var loginName = document.getElementById('login-name');
+            var loginPassword = document.getElementById('login-password');
+            var loginErr = document.getElementById('login-err');
+            var btnLogin = document.getElementById('btn-login');
+            var btnLogout = document.getElementById('btn-logout');
             var qEl = document.getElementById('q');
-            var btn = document.getElementById('btn-search');
+            var btnSearch = document.getElementById('btn-search');
             var dateEl = document.getElementById('date-display');
             var table = document.getElementById('result-table');
             var tbody = document.getElementById('result-body');
             var emptyEl = document.getElementById('result-empty');
             var errEl = document.getElementById('result-err');
+
+            function showScreen(screen) {
+                screenLogin.classList.remove('active');
+                screenMain.classList.remove('active');
+                if (screen === 'login') screenLogin.classList.add('active');
+                else screenMain.classList.add('active');
+            }
+
+            function getAuthHeaders() {
+                var token = localStorage.getItem(TOKEN_KEY);
+                return token ? { 'Authorization': 'Bearer ' + token } : {};
+            }
+
+            function doLogout() {
+                localStorage.removeItem(TOKEN_KEY);
+                showScreen('login');
+                loginErr.style.display = 'none';
+            }
 
             function showResult(data) {
                 errEl.style.display = 'none';
@@ -77,6 +133,8 @@
             }
 
             function doSearch() {
+                var token = localStorage.getItem(TOKEN_KEY);
+                if (!token) { doLogout(); return; }
                 var q = (qEl.value || '').trim();
                 var url = '/api/admin/today-meal-check';
                 if (q) url += '?q=' + encodeURIComponent(q);
@@ -84,20 +142,85 @@
                 table.style.display = 'none';
                 emptyEl.style.display = 'none';
                 errEl.style.display = 'none';
-                fetch(url)
-                    .then(function(r) { return r.json(); })
+                fetch(url, { headers: getAuthHeaders() })
+                    .then(function(r) {
+                        if (r.status === 401) { doLogout(); return Promise.reject(new Error('로그인이 만료되었습니다.')); }
+                        return r.json();
+                    })
                     .then(function(data) {
-                        if (data.items !== undefined) showResult(data);
-                        else showErr(data.detail || '응답 형식 오류');
+                        if (data && data.items !== undefined) showResult(data);
+                        else showErr(data && data.detail ? (Array.isArray(data.detail) ? data.detail.join(', ') : data.detail) : '응답 형식 오류');
                     })
                     .catch(function(e) {
-                        showErr('연결 실패: ' + (e.message || '네트워크 확인'));
+                        showErr(e.message || '연결 실패: 네트워크를 확인하세요.');
                     });
             }
 
-            btn.addEventListener('click', doSearch);
+            function doLogin() {
+                var empNo = (loginEmpNo.value || '').trim();
+                var name = (loginName.value || '').trim();
+                var password = (loginPassword.value || '').trim();
+                loginErr.style.display = 'none';
+                if (!empNo || !name) {
+                    loginErr.textContent = '사번과 이름을 입력하세요.';
+                    loginErr.style.display = 'block';
+                    return;
+                }
+                if (!password) {
+                    loginErr.textContent = '비밀번호를 입력하세요. (최초 접속 시 설정할 비밀번호)';
+                    loginErr.style.display = 'block';
+                    return;
+                }
+                btnLogin.disabled = true;
+                fetch('/api/auth/verify_device_admin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emp_no: empNo, name: name, password: password })
+                })
+                    .then(function(r) { return r.json().then(function(data) { return { ok: r.ok, data: data }; }); })
+                    .then(function(result) {
+                        if (result.ok && result.data.access_token) {
+                            localStorage.setItem(TOKEN_KEY, result.data.access_token);
+                            showScreen('main');
+                            dateEl.textContent = '이름 또는 사번을 입력한 뒤 조회하세요. (한국시간 오늘 기준)';
+                        } else {
+                            loginErr.textContent = result.data.detail || '로그인에 실패했습니다.';
+                            loginErr.style.display = 'block';
+                        }
+                    })
+                    .catch(function(e) {
+                        loginErr.textContent = '연결 실패: ' + (e.message || '네트워크 확인');
+                        loginErr.style.display = 'block';
+                    })
+                    .then(function() { btnLogin.disabled = false; });
+            }
+
+            // 초기: 토큰 있으면 유효성 확인 후 조회 화면, 없으면 로그인 화면
+            function init() {
+                var token = localStorage.getItem(TOKEN_KEY);
+                if (!token) {
+                    showScreen('login');
+                    return;
+                }
+                fetch('/api/auth/status_admin', { headers: getAuthHeaders() })
+                    .then(function(r) {
+                        if (r.ok) {
+                            showScreen('main');
+                            dateEl.textContent = '이름 또는 사번을 입력한 뒤 조회하세요. (한국시간 오늘 기준)';
+                        } else {
+                            doLogout();
+                        }
+                    })
+                    .catch(function() { doLogout(); });
+            }
+
+            btnLogin.addEventListener('click', doLogin);
+            loginPassword.addEventListener('keydown', function(e) { if (e.key === 'Enter') doLogin(); });
+            btnLogout.addEventListener('click', doLogout);
+            btnSearch.addEventListener('click', doSearch);
             qEl.addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(); });
-            dateEl.textContent = '이름 또는 사번을 입력한 뒤 조회하세요. (한국시간 오늘 기준)';
+
+            init();
         })();
     </script>
 </body>

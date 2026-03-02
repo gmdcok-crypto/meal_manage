@@ -1,13 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from jose import jwt, JWTError
 from app.core.database import get_db
 from app.models.models import User, CafeteriaAdmin
 from app.schemas.schemas import Token, UserResponse, VerifyDeviceRequest
 from app.core.security import create_access_token, get_password_hash, verify_password
+from app.core.config import settings
 from app.api.meal import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+http_bearer = HTTPBearer(auto_error=True)
+
+
+async def get_current_admin(
+    credentials: HTTPAuthorizationCredentials = Depends(http_bearer),
+    db: AsyncSession = Depends(get_db)
+) -> CafeteriaAdmin:
+    """Bearer 토큰에서 식당관리자(admin:{id}) 확인. PWA 당일 식사인증 조회 등에 사용."""
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+        )
+        sub = payload.get("sub")
+        if not sub or not str(sub).startswith("admin:"):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="관리자 인증이 필요합니다.")
+        admin_id = int(str(sub).replace("admin:", ""))
+    except (JWTError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰입니다.")
+    result = await db.execute(select(CafeteriaAdmin).where(CafeteriaAdmin.id == admin_id))
+    admin = result.scalar_one_or_none()
+    if not admin:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="관리자를 찾을 수 없습니다.")
+    return admin
 
 # 식당관리자(위탁사) PC 로그인용. token sub = "admin:{id}"
 @router.post("/verify_device_admin")
@@ -113,5 +140,14 @@ async def get_auth_status(
             "name": current_user.name,
             "emp_no": current_user.emp_no
         }
+    }
+
+
+@router.get("/status_admin")
+async def get_auth_status_admin(admin: CafeteriaAdmin = Depends(get_current_admin)):
+    """식당관리자 PWA(당일 식사인증 조회 등) 로그인 유효 여부 확인."""
+    return {
+        "status": "authenticated",
+        "user": {"name": admin.name, "emp_no": admin.emp_no}
     }
 
