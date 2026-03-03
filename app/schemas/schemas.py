@@ -45,21 +45,21 @@ class CafeteriaAdminResponse(BaseModel):
 class UserResponse(UserBase):
     id: int
     company_id: Optional[int] = None
-    status: str
+    status: Optional[str] = None
     department_name: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
     resigned_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 # Meal Policy Schemas
 class MealPolicyBase(BaseModel):
-    meal_type: str
-    start_time: time
-    end_time: time
-    base_price: int
-    guest_price: int
+    meal_type: Optional[str] = None
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    base_price: int = 0
+    guest_price: int = 0
     is_active: bool = True
 
 class MealPolicyResponse(MealPolicyBase):
@@ -86,10 +86,10 @@ class MealLogResponse(BaseModel):
     final_price: int
     is_void: bool
     void_reason: Optional[str] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     @field_serializer("created_at")
-    def serialize_created_at(self, dt: datetime) -> str:
+    def serialize_created_at(self, dt: Optional[datetime]) -> str:
         return utc_to_kst_str(dt) or ""
 
     class Config:

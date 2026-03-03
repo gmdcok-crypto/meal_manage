@@ -129,10 +129,10 @@ async def get_excel_report(
             "사번": log.user.emp_no if log.user else "N/A",
             "이름": log.user.name if log.user else "N/A",
             "부서": log.user.department_name if log.user else "N/A",
-            "식사종류": log.policy.meal_type if log.policy else "번외",
-            "인원": 1 + log.guest_count,
-            "단가": log.final_price,
-            "금액": log.final_price * (1 + log.guest_count)
+            "식사종류": (getattr(log.policy, "meal_type", None) if log.policy else None) or "번외",
+            "인원": 1 + (log.guest_count or 0),
+            "단가": log.final_price or 0,
+            "금액": (log.final_price or 0) * (1 + (log.guest_count or 0))
         })
     
     df_raw = pd.DataFrame(data)

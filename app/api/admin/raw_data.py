@@ -8,6 +8,7 @@ from app.schemas.schemas import MealLogAdminDetail, MealLogResponse, MealLogCrea
 from .utils import record_audit_log
 from typing import List, Optional
 from datetime import datetime, date
+from pydantic import ValidationError
 
 from app.core.time_utils import utc_now, parse_created_at_kst_to_utc, kst_date_range_to_naive, kst_today, KST
 
@@ -63,7 +64,18 @@ async def list_raw_data(
         query = query.where(and_(*filters))
         
     result = await db.execute(query.order_by(MealLog.created_at.desc()))
-    return result.scalars().all()
+    logs = result.scalars().all()
+
+    # 직렬화 실패 시 해당 로그만 제외하고 응답 (보고서 등에서 500 방지)
+    out: List[MealLogAdminDetail] = []
+    for log in logs:
+        try:
+            out.append(MealLogAdminDetail.model_validate(log))
+        except (ValidationError, TypeError, ValueError) as e:
+            import logging
+            logging.getLogger(__name__).warning("raw_data skip log id=%s: %s", getattr(log, "id", None), e)
+            continue
+    return out
 
 @router.post("/manual", response_model=MealLogResponse)
 async def create_manual_meal(

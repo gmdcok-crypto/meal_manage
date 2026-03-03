@@ -604,6 +604,7 @@ class DashboardScreen(QWidget):
 
 
     def update_clock(self):
+        # 대시보드 시계: 한국 로컬타임(KST) 표시
         kst = timezone(timedelta(hours=9))
         now = datetime.now(kst)
         days = ["월", "화", "수", "목", "금", "토", "일"]
@@ -668,7 +669,7 @@ class DashboardScreen(QWidget):
             user = row.get("user") or {}
             policy = row.get("policy") or {}
             ts = row.get("created_at", "")
-            # 서버가 내려주는 created_at: 타임존 없으면 이미 한국시간(KST) → 그대로 시간만 표시, 있으면 KST로 변환
+            # 서버 created_at: KST 기준 문자열(또는 타임존 있으면 KST로 변환) → 대시보드에는 한국 로컬타임으로 표시
             display_ts = ""
             try:
                 if isinstance(ts, str):
@@ -3098,14 +3099,15 @@ class MainWindow(QMainWindow):
     def load_recent_logs(self, date_value=None):
         if hasattr(self, 'recent_loader') and self.recent_loader.isRunning():
             return
-        # 서버 stats의 date 사용 (없으면 로컬 오늘)
+        # 서버 stats의 date 사용 (없으면 한국 로컬(KST) 오늘)
         if date_value:
             if hasattr(date_value, 'strftime'):
                 day_str = date_value.strftime("%Y-%m-%d")
             else:
                 day_str = str(date_value)[:10]
         else:
-            day_str = date.today().strftime("%Y-%m-%d")
+            kst = timezone(timedelta(hours=9))
+            day_str = datetime.now(kst).date().strftime("%Y-%m-%d")
         self.recent_loader = DataLoader(self.api.get_raw_data, "", day_str, day_str)
         self.recent_loader.finished.connect(self.on_recent_logs_finished)
         self.recent_loader.start()
