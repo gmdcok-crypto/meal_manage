@@ -271,9 +271,15 @@ class APIClient:
             if end_date:
                 params["end_date"] = end_date
             r = self.client.get(f"{self.base_url}/raw-data", params=params)
-            return r.json() if r.status_code == 200 else []
-        except Exception:
-            return []
+            if r.status_code == 200:
+                return (True, r.json() if isinstance(r.json(), list) else [])
+            try:
+                msg = r.json().get("detail", "조회 실패")
+            except Exception:
+                msg = r.text or "조회 실패"
+            return (False, msg if isinstance(msg, str) else str(msg))
+        except Exception as e:
+            return (False, str(e))
 
     def create_manual_raw_data(self, data):
         try:
@@ -1812,7 +1818,14 @@ class RawDataScreen(QWidget):
         self.loader.finished.connect(self.display_data)
         self.loader.start()
     def display_data(self, data):
-        if not isinstance(data, list): return
+        if isinstance(data, tuple) and len(data) >= 2:
+            success, payload = data[0], data[1]
+            if not success:
+                QMessageBox.warning(self, "오류", f"데이터를 가져오는데 실패했습니다.\n{payload}")
+                return
+            data = payload
+        if not isinstance(data, list):
+            return
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(data))
@@ -2429,10 +2442,16 @@ class ReportScreen(QWidget):
         self.loader.start()
 
     def on_data_loaded(self, data):
-        if not isinstance(data, list): 
+        if isinstance(data, tuple) and len(data) >= 2:
+            success, payload = data[0], data[1]
+            if not success:
+                QMessageBox.warning(self, "오류", f"데이터를 가져오는데 실패했습니다.\n{payload}")
+                return
+            data = payload
+        if not isinstance(data, list):
             QMessageBox.warning(self, "오류", "데이터를 가져오는데 실패했습니다.")
             return
-            
+
         # Filter out voided logs
         self.full_data = [d for d in data if not d.get("is_void")]
         self.display_data()
@@ -3092,6 +3111,8 @@ class MainWindow(QMainWindow):
         self.recent_loader.start()
 
     def on_recent_logs_finished(self, data):
+        if isinstance(data, tuple) and len(data) >= 2 and data[0]:
+            data = data[1]
         if isinstance(data, list):
             # Show all logs for today on dashboard
             self.dashboard.update_recent(data)

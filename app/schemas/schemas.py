@@ -96,8 +96,8 @@ class MealLogResponse(BaseModel):
         from_attributes = True
 
 class MealLogAdminDetail(MealLogResponse):
-    user: UserResponse
-    policy: MealPolicyResponse
+    user: Optional[UserResponse] = None
+    policy: Optional[MealPolicyResponse] = None
     void_operator: Optional[UserResponse] = None
     void_reason: Optional[str] = None
 
