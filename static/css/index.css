@@ -458,6 +458,14 @@ p {
     border-color: var(--primary) !important;
 }
 
+/* 인증 완료 화면 상단: 식사종류 + 인증시각 */
+.auth-meal-and-time {
+    font-size: 22px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+    letter-spacing: 0.02em;
+}
+
 /* 커스텀 알림 모달 (alert 대체, PWA·크롬 동일 표시) */
 .alert-overlay {
     display: none;

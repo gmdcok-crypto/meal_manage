@@ -14,6 +14,11 @@ function showAlert(message, onConfirm) {
     btn.onclick = handler;
 }
 
+function formatMealAndTime(mealType, authTime) {
+    var label = (mealType && { breakfast: '조식', lunch: '중식', dinner: '석식' }[mealType]) || mealType || '';
+    return (label + '  ' + (authTime || '')).trim() || '—';
+}
+
 const app = {
     state: {
         isLoggedIn: false,
@@ -21,6 +26,8 @@ const app = {
         user: null,
         meal: null,
         lastAuthAt: null   // 마지막 QR 인증 성공 시각 (5분 후 인증화면 다시보기 비표시용)
+        , lastAuthMealType: null
+        , lastAuthTime: null
     },
     homeClockTimer: null,
     authCountdownTimer: null,
@@ -42,6 +49,8 @@ const app = {
                         this.state.isLoggedIn = true;
                         var lastAt = localStorage.getItem('meal_lastAuthAt');
                         this.state.lastAuthAt = lastAt ? parseInt(lastAt, 10) : null;
+                        this.state.lastAuthMealType = localStorage.getItem('meal_lastAuthMealType') || null;
+                        this.state.lastAuthTime = localStorage.getItem('meal_lastAuthTime') || null;
                         this.updateUserInfoUI();
                         this.showPage('page-home');
                         return;
@@ -161,9 +170,13 @@ const app = {
         localStorage.removeItem('meal_token');
         localStorage.removeItem('meal_user');
         localStorage.removeItem('meal_lastAuthAt');
+        localStorage.removeItem('meal_lastAuthMealType');
+        localStorage.removeItem('meal_lastAuthTime');
         this.state.isLoggedIn = false;
         this.state.user = null;
         this.state.lastAuthAt = null;
+        this.state.lastAuthMealType = null;
+        this.state.lastAuthTime = null;
         this.showPage('page-login');
     },
 
@@ -246,6 +259,17 @@ const app = {
             }
 
                 if (res.ok) {
+                const mealType = data.meal_type || '';
+                const authTime = data.auth_time || '';
+                this.state.lastAuthMealType = mealType;
+                this.state.lastAuthTime = authTime;
+                try {
+                    localStorage.setItem('meal_lastAuthMealType', mealType);
+                    localStorage.setItem('meal_lastAuthTime', authTime);
+                } catch (e) {}
+                const mealTimeEl = document.getElementById('auth-meal-and-time');
+                if (mealTimeEl) mealTimeEl.textContent = formatMealAndTime(mealType, authTime);
+
                 const timeEl = document.getElementById('auth-time');
                 if (timeEl) timeEl.textContent = data.auth_time || '';
 
@@ -344,6 +368,10 @@ const app = {
         const userInfoEl = document.getElementById('auth-user-info');
         if (empNoEl) empNoEl.textContent = u.emp_no || '';
         if (userInfoEl) userInfoEl.textContent = [u.name, u.dept_name].filter(Boolean).join(' / ') || '-';
+        const mealType = this.state.lastAuthMealType || localStorage.getItem('meal_lastAuthMealType') || '';
+        const authTime = this.state.lastAuthTime || localStorage.getItem('meal_lastAuthTime') || '';
+        const mealTimeEl = document.getElementById('auth-meal-and-time');
+        if (mealTimeEl) mealTimeEl.textContent = formatMealAndTime(mealType, authTime);
         this.showPage('page-auth-success');
         this.startClock();
         // 인증화면 다시보기: 인증 시점 기준 5분 후 만료 (lastAt 없으면 현재 시점+5분)

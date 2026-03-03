@@ -105,6 +105,7 @@ async def process_qr_scan(
         "message": "식수 인증이 완료되었습니다.",
         "log_id": new_log.id,
         "auth_time": (new_log.created_at.strftime("%H:%M:%S") if new_log.created_at else "00:00:00"),
+        "meal_type": (policy.meal_type if policy else "") or "",
         "user": {
             "name": current_user.name,
             "emp_no": current_user.emp_no,
