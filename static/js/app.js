@@ -351,7 +351,7 @@ const app = {
         this.showPage('page-home');
     },
 
-    // 확인 후 또는 화면을 닫았다가 다시 인증 화면을 보여줄 때 사용 (5분 지나면 표시 안 함)
+    // 확인 후 또는 화면을 닫았다가 다시 인증 화면을 보여줄 때 사용 (오늘 인증 + 5분 이내만 표시)
     showAuthScreen() {
         if (!this.state.user) {
             showAlert("인증된 사용자 정보가 없습니다. QR 스캔을 먼저 해주세요.");
@@ -359,10 +359,21 @@ const app = {
         }
         const lastAt = this.state.lastAuthAt || (localStorage.getItem('meal_lastAuthAt') && parseInt(localStorage.getItem('meal_lastAuthAt'), 10));
         const fiveMinMs = 5 * 60 * 1000;
-        if (lastAt && (Date.now() - lastAt > fiveMinMs)) {
-            showAlert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. 담당자에게 문의 해주세요.", function () { app.goHome(); });
-            return;
+
+        if (lastAt) {
+            var lastDate = new Date(lastAt);
+            var today = new Date();
+            var isSameDay = lastDate.getFullYear() === today.getFullYear() && lastDate.getMonth() === today.getMonth() && lastDate.getDate() === today.getDate();
+            if (!isSameDay) {
+                showAlert("오늘 인증한 내역이 없습니다. QR 스캔을 해주세요.", function () { app.goHome(); });
+                return;
+            }
+            if (Date.now() - lastAt > fiveMinMs) {
+                showAlert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. 담당자에게 문의 해주세요.", function () { app.goHome(); });
+                return;
+            }
         }
+
         const u = this.state.user;
         const empNoEl = document.getElementById('auth-emp-no');
         const userInfoEl = document.getElementById('auth-user-info');
