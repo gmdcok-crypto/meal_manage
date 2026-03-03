@@ -81,6 +81,12 @@ async def verify_device(req: VerifyDeviceRequest, db: AsyncSession = Depends(get
         if not user or user.name != req.name:
             raise HTTPException(status_code=400, detail="사번 또는 이름이 일치하지 않습니다.")
         
+        if user.status == "RESIGNED":
+            raise HTTPException(
+                status_code=403,
+                detail="퇴사 처리된 사원은 인증할 수 없습니다."
+            )
+        
         safe_password = (req.password or "")[:72]
 
         if not user.is_verified:

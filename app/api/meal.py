@@ -34,6 +34,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
+    if user.status == "RESIGNED":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="퇴사 처리된 사원은 식사 인증을 사용할 수 없습니다."
+        )
     if not user.is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

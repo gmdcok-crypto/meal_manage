@@ -1251,6 +1251,13 @@ class EmployeeScreen(QWidget):
         self.del_btn.setEnabled(False)
         self.del_btn.clicked.connect(self.on_delete)
 
+        self.cancel_resign_btn = QPushButton("퇴사취소")
+        self.cancel_resign_btn.setObjectName("SecondaryBtn")
+        self.cancel_resign_btn.setFixedWidth(90)
+        self.cancel_resign_btn.setEnabled(False)
+        self.cancel_resign_btn.setToolTip("선택한 퇴사자를 재직으로 복구합니다.")
+        self.cancel_resign_btn.clicked.connect(self.on_cancel_resign)
+
         self.permanent_del_btn = QPushButton("완전 삭제")
         self.permanent_del_btn.setObjectName("DangerBtn")
         self.permanent_del_btn.setFixedWidth(100)
@@ -1276,6 +1283,7 @@ class EmployeeScreen(QWidget):
         reg_layout.addWidget(self.add_btn)
         reg_layout.addWidget(self.edit_btn)
         reg_layout.addWidget(self.del_btn)
+        reg_layout.addWidget(self.cancel_resign_btn)
         reg_layout.addWidget(self.permanent_del_btn)
         reg_layout.addWidget(self.reset_btn)
         reg_layout.addWidget(self.import_btn)
@@ -1314,6 +1322,7 @@ class EmployeeScreen(QWidget):
     def on_selection_changed(self):
         self.edit_btn.setEnabled(False)
         self.del_btn.setEnabled(False)
+        self.cancel_resign_btn.setEnabled(False)
         self.permanent_del_btn.setEnabled(False)
         self.reset_btn.setEnabled(False)
         selected = self.table.selectedItems()
@@ -1345,9 +1354,11 @@ class EmployeeScreen(QWidget):
                 if status_text == "재직":
                     self.del_btn.setEnabled(True)
                     self.reset_btn.setEnabled(True)
+                    self.cancel_resign_btn.setEnabled(False)
                 else:
                     self.del_btn.setEnabled(False)
                     self.reset_btn.setEnabled(False)
+                    self.cancel_resign_btn.setEnabled(True)
 
     def clear_inputs(self):
         self.emp_no_input.clear()
@@ -1355,6 +1366,7 @@ class EmployeeScreen(QWidget):
         self.table.clearSelection()
         self.edit_btn.setEnabled(False)
         self.del_btn.setEnabled(False)
+        self.cancel_resign_btn.setEnabled(False)
         self.permanent_del_btn.setEnabled(False)
         self.reset_btn.setEnabled(False)
 
@@ -1455,6 +1467,30 @@ class EmployeeScreen(QWidget):
             self.loader.error.connect(self.on_action_error)
             self.loader.start()
 
+    def on_cancel_resign(self):
+        selected = self.table.selectedItems()
+        if not selected:
+            return
+        row = selected[0].row()
+        item0 = self.table.item(row, 0)
+        item5 = self.table.item(row, 5)
+        eid = item0.data(Qt.UserRole) if item0 else None
+        if eid is None:
+            return
+        status_text = (item5.text() if item5 else "").strip()
+        if status_text != "퇴사":
+            QMessageBox.warning(self, "경고", "퇴사자만 퇴사취소할 수 있습니다.")
+            return
+        name_item = self.table.item(row, 2)
+        name = name_item.text() if name_item else "(선택 행)"
+        if QMessageBox.question(self, "확인", f"'{name}' 사원을 재직으로 복구하시겠습니까?") != QMessageBox.Yes:
+            return
+        self.cancel_resign_btn.setEnabled(False)
+        self.loader = DataLoader(self.api.update_employee, eid, {"status": "ACTIVE"})
+        self.loader.finished.connect(self.on_action_finished)
+        self.loader.error.connect(self.on_action_error)
+        self.loader.start()
+
     def on_permanent_delete(self):
         selected = self.table.selectedItems()
         if not selected: return
@@ -1522,6 +1558,7 @@ class EmployeeScreen(QWidget):
         self.add_btn.setEnabled(True)
         self.edit_btn.setEnabled(True)
         self.reset_btn.setEnabled(True)
+        self.cancel_resign_btn.setEnabled(True)
         if isinstance(result, tuple):
             success, data = result
         else:
@@ -1538,6 +1575,7 @@ class EmployeeScreen(QWidget):
         self.add_btn.setEnabled(True)
         self.edit_btn.setEnabled(True)
         self.del_btn.setEnabled(True)
+        self.cancel_resign_btn.setEnabled(True)
         self.permanent_del_btn.setEnabled(True)
         self.reset_btn.setEnabled(True)
         QMessageBox.critical(self, "네트워크 오류", f"서버 통신 중 오류가 발생했습니다:\n{err_msg}")
