@@ -131,57 +131,12 @@
         </div>
     </div>
 
-    <!-- 바로가기(홈 화면 추가) 설치 안내 모달 - 알림과 동일 디자인 -->
-    <div id="install-prompt-overlay" class="alert-overlay" aria-hidden="true">
-        <div class="alert-dialog">
-            <p id="install-prompt-message" class="alert-message">홈 화면에 추가하면 앱처럼 편하게 사용할 수 있어요.</p>
-            <div class="alert-dialog-buttons">
-                <button type="button" class="btn btn-primary" id="install-prompt-add">추가하기</button>
-                <button type="button" class="btn btn-secondary" id="install-prompt-close">닫기</button>
-            </div>
-        </div>
-    </div>
-
     <!-- 배포 시 새 버전이면 ?v= 숫자만 올려서 캐시 갱신 -->
     <script src="js/app.js?v=1"></script>
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js?v=1');
         }
-        (function() {
-            if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
-            if (sessionStorage.getItem('install-banner-closed')) return;
-            var overlay = document.getElementById('install-prompt-overlay');
-            var msgEl = document.getElementById('install-prompt-message');
-            var addBtn = document.getElementById('install-prompt-add');
-            var closeBtn = document.getElementById('install-prompt-close');
-            if (!overlay || !msgEl || !addBtn || !closeBtn) return;
-            overlay.setAttribute('aria-hidden', 'false');
-            closeBtn.onclick = function() {
-                overlay.setAttribute('aria-hidden', 'true');
-                sessionStorage.setItem('install-banner-closed', '1');
-            };
-            addBtn.onclick = function() {
-                if (window.deferredPrompt) {
-                    window.deferredPrompt.prompt();
-                    window.deferredPrompt.userChoice.then(function() {
-                        overlay.setAttribute('aria-hidden', 'true');
-                        sessionStorage.setItem('install-banner-closed', '1');
-                    });
-                } else {
-                    overlay.setAttribute('aria-hidden', 'true');
-                    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                    var msg = isIOS
-                        ? '아이폰·아이패드: Safari 하단의 공유(□↑) 버튼을 누른 뒤 「홈 화면에 추가」를 선택해 주세요.'
-                        : '브라우저 메뉴(⋮)에서 「홈 화면에 추가」 또는 「앱 설치」를 선택해 주세요.';
-                    showAlert(msg);
-                }
-            };
-        })();
-        window.addEventListener('beforeinstallprompt', function(e) {
-            e.preventDefault();
-            window.deferredPrompt = e;
-        });
     </script>
 </body>
 
