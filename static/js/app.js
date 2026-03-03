@@ -300,6 +300,10 @@ const app = {
 
     startAuth() {
         this.showPage('page-auth-success');
+        var mealType = this.state.lastAuthMealType || '';
+        var authTime = this.state.lastAuthTime || '';
+        var mealTimeEl = document.getElementById('auth-meal-and-time');
+        if (mealTimeEl) mealTimeEl.textContent = formatMealAndTime(mealType, authTime);
         this.startClock();
         // 인증 시점 기준 3분 후 만료
         const expiresAt = (this.state.lastAuthAt || Date.now()) + 3 * 60 * 1000;
@@ -357,21 +361,27 @@ const app = {
             showAlert("인증된 사용자 정보가 없습니다. QR 스캔을 먼저 해주세요.");
             return;
         }
-        const lastAt = this.state.lastAuthAt || (localStorage.getItem('meal_lastAuthAt') && parseInt(localStorage.getItem('meal_lastAuthAt'), 10));
+        var lastAt = this.state.lastAuthAt;
+        if (lastAt == null) {
+            var stored = localStorage.getItem('meal_lastAuthAt');
+            lastAt = (stored !== null && stored !== '') ? parseInt(stored, 10) : null;
+        }
+        if (lastAt === null || lastAt === undefined || isNaN(lastAt) || lastAt <= 0) {
+            showAlert("오늘 인증한 내역이 없습니다. QR 스캔을 해주세요.", function () { app.goHome(); });
+            return;
+        }
         const fiveMinMs = 5 * 60 * 1000;
 
-        if (lastAt) {
-            var lastDate = new Date(lastAt);
-            var today = new Date();
-            var isSameDay = lastDate.getFullYear() === today.getFullYear() && lastDate.getMonth() === today.getMonth() && lastDate.getDate() === today.getDate();
-            if (!isSameDay) {
-                showAlert("오늘 인증한 내역이 없습니다. QR 스캔을 해주세요.", function () { app.goHome(); });
-                return;
-            }
-            if (Date.now() - lastAt > fiveMinMs) {
-                showAlert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. 담당자에게 문의 해주세요.", function () { app.goHome(); });
-                return;
-            }
+        var lastDate = new Date(lastAt);
+        var today = new Date();
+        var isSameDay = lastDate.getFullYear() === today.getFullYear() && lastDate.getMonth() === today.getMonth() && lastDate.getDate() === today.getDate();
+        if (!isSameDay) {
+            showAlert("오늘 인증한 내역이 없습니다. QR 스캔을 해주세요.", function () { app.goHome(); });
+            return;
+        }
+        if (Date.now() - lastAt > fiveMinMs) {
+            showAlert("5분이 지나 인증 화면을 더 이상 표시할 수 없습니다. 담당자에게 문의 해주세요.", function () { app.goHome(); });
+            return;
         }
 
         const u = this.state.user;
