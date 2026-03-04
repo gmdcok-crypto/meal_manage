@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import MealPolicy, AuditLog, Company
 from app.schemas.schemas import MealPolicyResponse, MealPolicyBase
 from .utils import record_audit_log
@@ -10,7 +11,7 @@ from typing import List
 router = APIRouter(tags=["policies"])
 
 @router.get("", response_model=List[MealPolicyResponse])
-async def list_policies(db: AsyncSession = Depends(get_db)):
+async def list_policies(db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     result = await db.execute(select(MealPolicy))
     return result.scalars().all()
 
@@ -18,9 +19,10 @@ async def list_policies(db: AsyncSession = Depends(get_db)):
 async def create_policy(
     policy_in: MealPolicyBase,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
-    # 유효한 회사 ID 요청 (하드코딩 1 대신 첫 번째 회사 사용)
+    # 유효한 회사 ID 요청
     company_res = await db.execute(select(Company.id).limit(1))
     company_id = company_res.scalar()
     
@@ -52,7 +54,8 @@ async def update_policy(
     policy_id: int,
     policy_in: MealPolicyBase,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
     policy = result.scalar_one_or_none()
@@ -85,7 +88,8 @@ async def update_policy(
 async def delete_policy(
     policy_id: int,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
     policy = result.scalar_one_or_none()

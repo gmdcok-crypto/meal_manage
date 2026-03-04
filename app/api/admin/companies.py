@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import Company, AuditLog
 from app.schemas.schemas import CompanyCreate, CompanyUpdate, CompanyResponse
 from app.api.admin.utils import record_audit_log
@@ -10,12 +11,12 @@ from typing import List
 router = APIRouter()
 
 @router.get("", response_model=List[CompanyResponse])
-async def get_companies(db: AsyncSession = Depends(get_db)):
+async def get_companies(db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     result = await db.execute(select(Company))
     return result.scalars().all()
 
 @router.post("", response_model=CompanyResponse)
-async def create_company(company: CompanyCreate, db: AsyncSession = Depends(get_db)):
+async def create_company(company: CompanyCreate, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     # Check if code already exists
     existing = await db.execute(select(Company).where(Company.code == company.code))
     if existing.scalar_one_or_none():
@@ -34,7 +35,7 @@ async def create_company(company: CompanyCreate, db: AsyncSession = Depends(get_
     return new_company
 
 @router.patch("/{company_id}", response_model=CompanyResponse)
-async def update_company(company_id: int, company_in: CompanyUpdate, db: AsyncSession = Depends(get_db)):
+async def update_company(company_id: int, company_in: CompanyUpdate, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     result = await db.execute(select(Company).where(Company.id == company_id))
     db_company = result.scalar_one_or_none()
     if not db_company:
@@ -60,7 +61,7 @@ async def update_company(company_id: int, company_in: CompanyUpdate, db: AsyncSe
     return db_company
 
 @router.delete("/{company_id}")
-async def delete_company(company_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_company(company_id: int, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     result = await db.execute(select(Company).where(Company.id == company_id))
     db_company = result.scalar_one_or_none()
     if not db_company:

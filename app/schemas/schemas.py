@@ -53,13 +53,13 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
-# Meal Policy Schemas
+# Meal Policy Schemas (GET /policies 등에서 사용, DB NULL 허용으로 500 방지)
 class MealPolicyBase(BaseModel):
     meal_type: Optional[str] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
-    base_price: int = 0
-    guest_price: int = 0
+    base_price: Optional[int] = 0
+    guest_price: Optional[int] = 0
     is_active: bool = True
 
 class MealPolicyResponse(MealPolicyBase):
@@ -111,7 +111,7 @@ class MealLogUpdate(BaseModel):
 # Audit Log Schemas
 class AuditLogResponse(BaseModel):
     id: int
-    operator_id: int
+    operator_id: Optional[int] = None
     action: str
     target_table: str
     target_id: int

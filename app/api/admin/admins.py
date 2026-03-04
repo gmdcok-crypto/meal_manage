@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import CafeteriaAdmin
 from app.schemas.schemas import CafeteriaAdminResponse, AdminCreate, AdminUpdate
 from typing import List
@@ -11,7 +12,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=List[CafeteriaAdminResponse])
-async def list_admins(db: AsyncSession = Depends(get_db)):
+async def list_admins(db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     """식당관리 목록 (사번, 이름, 인증 상태)."""
     result = await db.execute(
         select(CafeteriaAdmin).order_by(CafeteriaAdmin.emp_no)
@@ -22,7 +23,8 @@ async def list_admins(db: AsyncSession = Depends(get_db)):
 @router.post("", response_model=CafeteriaAdminResponse)
 async def create_admin(
     body: AdminCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     """식당관리 등록. 최초 로그인 시 비밀번호 설정·기기 인증."""
     existing = await db.execute(select(CafeteriaAdmin).where(CafeteriaAdmin.emp_no == body.emp_no))
@@ -43,7 +45,8 @@ async def create_admin(
 async def update_admin(
     admin_id: int,
     body: AdminUpdate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     """식당관리 수정 (이름 등)."""
     result = await db.execute(select(CafeteriaAdmin).where(CafeteriaAdmin.id == admin_id))
@@ -58,7 +61,7 @@ async def update_admin(
 
 
 @router.delete("/{admin_id}")
-async def delete_admin(admin_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_admin(admin_id: int, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     """식당관리 삭제."""
     result = await db.execute(select(CafeteriaAdmin).where(CafeteriaAdmin.id == admin_id))
     admin = result.scalar_one_or_none()
@@ -70,7 +73,7 @@ async def delete_admin(admin_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{admin_id}/reset-device")
-async def reset_admin_device(admin_id: int, db: AsyncSession = Depends(get_db)):
+async def reset_admin_device(admin_id: int, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     """식당관리 기기 초기화. 다음 로그인 시 비밀번호 재설정."""
     result = await db.execute(select(CafeteriaAdmin).where(CafeteriaAdmin.id == admin_id))
     admin = result.scalar_one_or_none()

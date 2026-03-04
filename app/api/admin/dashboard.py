@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import MealLog, MealPolicy, User
 from app.schemas.schemas import DashboardStats
 from app.core.time_utils import kst_now, kst_today, kst_date_range_naive
@@ -11,7 +12,10 @@ from typing import List
 router = APIRouter(tags=["dashboard"])
 
 @router.get("/today", response_model=DashboardStats)
-async def get_today_stats(db: AsyncSession = Depends(get_db)):
+async def get_today_stats(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
+):
     today = kst_today()
     
     # Determined meal type (한국 시간 기준)

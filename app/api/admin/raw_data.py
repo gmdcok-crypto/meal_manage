@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import joinedload
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import MealLog, User, MealPolicy
 from app.schemas.schemas import MealLogAdminDetail, MealLogResponse, MealLogCreate, MealLogUpdate
 from .utils import record_audit_log
@@ -21,7 +22,8 @@ async def list_raw_data(
     search: Optional[str] = None,
     path: Optional[str] = None,
     is_void: Optional[bool] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     query = (
         select(MealLog)
@@ -85,13 +87,18 @@ async def create_manual_meal(
     guest_count: int = 0,
     reason: str = "Manual Entry",
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     # Fetch policy to get price snapshot
     policy_result = await db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
     policy = policy_result.scalar_one_or_none()
     if not policy:
         raise HTTPException(status_code=404, detail="Meal Policy not found")
+
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    if user_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="User not found")
         
     created_at_naive_kst = (parse_created_at_kst_to_utc(created_at) if created_at is not None else utc_now()).astimezone(KST).replace(tzinfo=None)
     new_log = MealLog(
@@ -139,7 +146,8 @@ async def void_meal_log(
     log_id: int,
     reason: str,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(MealLog).where(MealLog.id == log_id))
     log = result.scalar_one_or_none()
@@ -181,7 +189,8 @@ async def update_raw_data(
     log_id: int,
     update_data: MealLogUpdate,
     operator_id: int = 1,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(MealLog).where(MealLog.id == log_id))
     log = result.scalar_one_or_none()
@@ -226,7 +235,8 @@ async def update_raw_data(
 async def delete_raw_data(
     log_id: int,
     operator_id: int = 1,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(MealLog).where(MealLog.id == log_id))
     log = result.scalar_one_or_none()

@@ -1,7 +1,9 @@
 """PWA 공지사항: 백엔드 static/notice.html 읽기·쓰기 API."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 import os
+
+from app.api.auth import get_current_admin
 
 router = APIRouter()
 
@@ -27,7 +29,7 @@ async def get_notice():
 
 
 @router.put("/notice")
-async def save_notice(body: NoticeBody):
+async def save_notice(body: NoticeBody, _admin=Depends(get_current_admin)):
     """공지 내용 저장 (PC 앱 저장 시 호출). 줄바꿈은 <br>로 저장해 PWA에서 그대로 표시."""
     try:
         os.makedirs(os.path.dirname(NOTICE_PATH), exist_ok=True)

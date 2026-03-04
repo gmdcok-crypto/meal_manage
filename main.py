@@ -53,11 +53,13 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    print(traceback.format_exc())
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal Server Error", "traceback": traceback.format_exc()}
-    )
+    import logging
+    logging.getLogger(__name__).exception("Unhandled exception: %s", exc)
+    is_production = os.environ.get("ENV", "development").lower() in ("production", "prod")
+    content = {"detail": "Internal Server Error"}
+    if not is_production:
+        content["traceback"] = traceback.format_exc()
+    return JSONResponse(status_code=500, content=content)
 
 # 라우터 등록
 app.include_router(auth.router, prefix="/api")

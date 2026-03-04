@@ -134,6 +134,78 @@ QComboBox QAbstractItemView::item { min-height: 35px; padding: 2px 10px; }
 QLabel#InputLabel { color: #ffffff; font-weight: bold; font-family: 'Malgun Gothic'; font-size: 18px; }
 """
 
+def _auth_url():
+    """관리자 로그인 API URL (API_BASE_URL에서 /api/admin → /api/auth/verify_device_admin)."""
+    base = (API_BASE_URL or "").rstrip("/")
+    if "/api/admin" in base:
+        return base.replace("/api/admin", "/api/auth/verify_device_admin")
+    return base.rstrip("/api") + "/api/auth/verify_device_admin"
+
+class AdminLoginDialog(QDialog):
+    """식당관리 PC 앱 로그인. 성공 시 token 반환."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.token = None
+        self.user = None
+        self.setWindowTitle("식당관리 로그인")
+        self.setMinimumSize(400, 280)
+        self.setStyleSheet(QSS)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(15)
+        form = QFormLayout()
+        self.emp_no_input = QLineEdit()
+        self.emp_no_input.setPlaceholderText("사번")
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("성명")
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("비밀번호 (최초/재설정 시 입력)")
+        self.password_input.setEchoMode(QLineEdit.Password)
+        form.addRow(QLabel("사번"), self.emp_no_input)
+        form.addRow(QLabel("성명"), self.name_input)
+        form.addRow(QLabel("비밀번호"), self.password_input)
+        layout.addLayout(form)
+        btn_layout = QHBoxLayout()
+        self.login_btn = QPushButton("로그인")
+        self.login_btn.setObjectName("PrimaryBtn")
+        self.login_btn.clicked.connect(self.do_login)
+        self.cancel_btn = QPushButton("취소")
+        self.cancel_btn.setObjectName("SecondaryBtn")
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.login_btn)
+        btn_layout.addWidget(self.cancel_btn)
+        layout.addLayout(btn_layout)
+
+    def do_login(self):
+        emp_no = self.emp_no_input.text().strip()
+        name = self.name_input.text().strip()
+        password = (self.password_input.text() or "").strip()
+        if not emp_no or not name:
+            QMessageBox.warning(self, "입력 오류", "사번과 성명을 입력하세요.")
+            return
+        self.login_btn.setEnabled(False)
+        try:
+            r = httpx.post(
+                _auth_url(),
+                json={"emp_no": emp_no, "name": name, "password": password},
+                timeout=API_TIMEOUT,
+            )
+            body = r.json() if r.status_code in (200, 400) else {}
+            if r.status_code == 200:
+                self.token = body.get("access_token")
+                self.user = body.get("user") or {}
+                if self.token:
+                    self.accept()
+                else:
+                    QMessageBox.warning(self, "오류", "토큰을 받지 못했습니다.")
+            else:
+                QMessageBox.warning(self, "로그인 실패", (body.get("detail") or r.text or "로그인에 실패했습니다."))
+        except Exception as e:
+            QMessageBox.critical(self, "연결 오류", f"서버에 연결할 수 없습니다:\n{e}")
+        finally:
+            self.login_btn.setEnabled(True)
+
 class EmployeeSearchDialog(QDialog):
     def __init__(self, api, main_win, parent=None):
         super().__init__(parent)
@@ -251,13 +323,19 @@ def setup_standard_table(table):
     table.setSortingEnabled(True)
 
 class APIClient:
-    def __init__(self, base_url=None):
+    def __init__(self, base_url=None, token=None):
         self.base_url = base_url or API_BASE_URL
+        self.token = token
         self.client = httpx.Client(timeout=API_TIMEOUT)
+
+    def _auth_headers(self):
+        if self.token:
+            return {"Authorization": f"Bearer {self.token}"}
+        return {}
 
     def get_stats(self):
         try:
-            r = self.client.get(f"{self.base_url}/stats/today")
+            r = self.client.get(f"{self.base_url}/stats/today", headers=self._auth_headers())
             return r.json() if r.status_code == 200 else None
         except Exception:
             return None
@@ -270,53 +348,59 @@ class APIClient:
                 params["start_date"] = start_date
             if end_date:
                 params["end_date"] = end_date
-            r = self.client.get(f"{self.base_url}/raw-data", params=params)
-            if r.status_code == 200:
-                return (True, r.json() if isinstance(r.json(), list) else [])
+            r = self.client.get(f"{self.base_url}/raw-data", params=params, headers=self._auth_headers())
+            body = None
             try:
-                msg = r.json().get("detail", "조회 실패")
+                body = r.json()
             except Exception:
-                msg = r.text or "조회 실패"
+                body = {}
+            if r.status_code == 200:
+                return (True, body if isinstance(body, list) else [])
+            msg = (body or {}).get("detail", r.text or "조회 실패")
             return (False, msg if isinstance(msg, str) else str(msg))
         except Exception as e:
             return (False, str(e))
 
     def create_manual_raw_data(self, data):
         try:
-            r = self.client.post(f"{self.base_url}/raw-data/manual", params=data)
-            if r.status_code == 200:
-                return (True, r.json())
+            r = self.client.post(f"{self.base_url}/raw-data/manual", params=data, headers=self._auth_headers())
+            body = None
             try:
-                detail = r.json().get("detail", "등록 실패")
+                body = r.json()
             except Exception:
-                detail = r.text or "등록 실패"
+                body = {}
+            if r.status_code == 200:
+                return (True, body)
+            detail = (body or {}).get("detail", r.text or "등록 실패")
             return (False, detail)
         except Exception as e:
             return (False, str(e))
 
     def update_raw_data(self, log_id, data):
         try:
-            r = self.client.put(f"{self.base_url}/raw-data/{log_id}", json=data)
-            if r.status_code == 200:
-                return (True, r.json())
+            r = self.client.put(f"{self.base_url}/raw-data/{log_id}", json=data, headers=self._auth_headers())
+            body = None
             try:
-                detail = r.json().get("detail", "수정 실패")
+                body = r.json()
             except Exception:
-                detail = r.text or "수정 실패"
+                body = {}
+            if r.status_code == 200:
+                return (True, body)
+            detail = (body or {}).get("detail", r.text or "수정 실패")
             return (False, detail)
         except Exception as e:
             return (False, str(e))
 
     def delete_raw_data(self, log_id):
         try:
-            r = self.client.delete(f"{self.base_url}/raw-data/{log_id}")
+            r = self.client.delete(f"{self.base_url}/raw-data/{log_id}", headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
 
     def void_log(self, log_id, reason):
         try:
-            r = self.client.patch(f"{self.base_url}/raw-data/{log_id}/void", json={"reason": reason})
+            r = self.client.patch(f"{self.base_url}/raw-data/{log_id}/void", json={"reason": reason}, headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
@@ -324,32 +408,36 @@ class APIClient:
     # Company Actions
     def get_companies(self):
         try:
-            r = self.client.get(f"{self.base_url}/companies")
+            r = self.client.get(f"{self.base_url}/companies", headers=self._auth_headers())
             return r.json() if r.status_code == 200 else []
         except Exception:
             return []
 
     def create_company(self, code, name):
         try:
-            r = self.client.post(f"{self.base_url}/companies", json={"code": code, "name": name})
+            r = self.client.post(f"{self.base_url}/companies", json={"code": code, "name": name}, headers=self._auth_headers())
+            body = None
+            try:
+                body = r.json()
+            except Exception:
+                body = {}
             if r.status_code == 200:
-                return True, r.json()
-            else:
-                detail = r.json().get("detail", "알 수 없는 오류")
-                return False, detail
+                return True, body
+            detail = (body or {}).get("detail", r.text or "알 수 없는 오류")
+            return False, detail
         except Exception as e:
             return False, str(e)
 
     def update_company(self, cid, code, name):
         try:
-            r = self.client.patch(f"{self.base_url}/companies/{cid}", json={"code": code, "name": name})
+            r = self.client.patch(f"{self.base_url}/companies/{cid}", json={"code": code, "name": name}, headers=self._auth_headers())
             return r.json() if r.status_code == 200 else None
         except Exception:
             return None
 
     def delete_company(self, cid):
         try:
-            r = self.client.delete(f"{self.base_url}/companies/{cid}")
+            r = self.client.delete(f"{self.base_url}/companies/{cid}", headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
@@ -357,14 +445,14 @@ class APIClient:
     # Policy Actions
     def get_policies(self):
         try:
-            r = self.client.get(f"{self.base_url}/policies")
+            r = self.client.get(f"{self.base_url}/policies", headers=self._auth_headers())
             return r.json() if r.status_code == 200 else []
         except Exception:
             return []
 
     def create_policy(self, data):
         try:
-            r = self.client.post(f"{self.base_url}/policies", json=data)
+            r = self.client.post(f"{self.base_url}/policies", json=data, headers=self._auth_headers())
             if r.status_code == 200:
                 return (True, r.json())
             try:
@@ -377,7 +465,7 @@ class APIClient:
 
     def update_policy(self, policy_id, data):
         try:
-            r = self.client.put(f"{self.base_url}/policies/{policy_id}", json=data)
+            r = self.client.put(f"{self.base_url}/policies/{policy_id}", json=data, headers=self._auth_headers())
             if r.status_code == 200:
                 return (True, r.json())
             try:
@@ -390,7 +478,7 @@ class APIClient:
 
     def delete_policy(self, policy_id):
         try:
-            r = self.client.delete(f"{self.base_url}/policies/{policy_id}")
+            r = self.client.delete(f"{self.base_url}/policies/{policy_id}", headers=self._auth_headers())
             return r.status_code == 200
         except: return False
 
@@ -398,14 +486,14 @@ class APIClient:
     def get_departments(self, company_id=None):
         try:
             params = {"company_id": company_id} if company_id else {}
-            r = self.client.get(f"{self.base_url}/departments", params=params)
+            r = self.client.get(f"{self.base_url}/departments", params=params, headers=self._auth_headers())
             return r.json() if r.status_code == 200 else []
         except Exception:
             return []
 
     def create_department(self, company_id, code, name):
         try:
-            r = self.client.post(f"{self.base_url}/departments", json={"company_id": company_id, "code": code, "name": name})
+            r = self.client.post(f"{self.base_url}/departments", json={"company_id": company_id, "code": code, "name": name}, headers=self._auth_headers())
             if r.status_code == 200:
                 return True, r.json()
             else:
@@ -416,14 +504,14 @@ class APIClient:
 
     def update_department(self, did, code, name):
         try:
-            r = self.client.patch(f"{self.base_url}/departments/{did}", json={"code": code, "name": name})
+            r = self.client.patch(f"{self.base_url}/departments/{did}", json={"code": code, "name": name}, headers=self._auth_headers())
             return r.json() if r.status_code == 200 else None
         except Exception:
             return None
 
     def delete_department(self, did):
         try:
-            r = self.client.delete(f"{self.base_url}/departments/{did}")
+            r = self.client.delete(f"{self.base_url}/departments/{did}", headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
@@ -434,20 +522,20 @@ class APIClient:
             params = {"search": search}
             if status:
                 params["status"] = status
-            r = self.client.get(f"{self.base_url}/employees", params=params)
+            r = self.client.get(f"{self.base_url}/employees", params=params, headers=self._auth_headers())
             return r.json() if r.status_code == 200 else []
         except Exception:
             return []
 
     def create_employee(self, data):
         try:
-            r = self.client.post(f"{self.base_url}/employees", json=data)
+            r = self.client.post(f"{self.base_url}/employees", json=data, headers=self._auth_headers())
             return (True, r.json()) if r.status_code == 200 else (False, r.json().get("detail", "등록 실패"))
         except Exception as e: return (False, str(e))
 
     def update_employee(self, emp_id, data):
         try:
-            r = self.client.put(f"{self.base_url}/employees/{emp_id}", json=data)
+            r = self.client.put(f"{self.base_url}/employees/{emp_id}", json=data, headers=self._auth_headers())
             return (True, r.json()) if r.status_code == 200 else (False, r.json().get("detail", "수정 실패"))
         except Exception as e: return (False, str(e))
 
@@ -455,14 +543,14 @@ class APIClient:
         try:
             # 서버가 bool 쿼리 파라미터를 확실히 인식하도록 1/0 사용
             params = {"permanent": "1"} if permanent else {}
-            r = self.client.delete(f"{self.base_url}/employees/{emp_id}", params=params)
+            r = self.client.delete(f"{self.base_url}/employees/{emp_id}", params=params, headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
 
     def get_excel_report_data(self, year, month):
         try:
-            r = self.client.get(f"{self.base_url}/reports/excel", params={"year": year, "month": month})
+            r = self.client.get(f"{self.base_url}/reports/excel", params={"year": year, "month": month}, headers=self._auth_headers())
             return r.content if r.status_code == 200 else None
         except Exception:
             return None
@@ -470,23 +558,24 @@ class APIClient:
     def import_employees_excel(self, company_id, file_content):
         try:
             r = self.client.post(
-                f"{self.base_url}/employees/import", 
+                f"{self.base_url}/employees/import",
                 params={"company_id": company_id},
-                content=file_content
+                content=file_content,
+                headers=self._auth_headers()
             )
             return (True, r.json()) if r.status_code == 200 else (False, r.json().get("detail", "가져오기 실패"))
         except Exception as e: return (False, str(e))
 
     def reset_device_auth(self, emp_id):
         try:
-            r = self.client.post(f"{self.base_url}/employees/{emp_id}/reset-device")
+            r = self.client.post(f"{self.base_url}/employees/{emp_id}/reset-device", headers=self._auth_headers())
             return (True, r.json()) if r.status_code == 200 else (False, r.json().get("detail", "초기화 실패"))
         except Exception as e: return (False, str(e))
 
     def get_notice(self):
         """공지 내용 조회 (백엔드 API)."""
         try:
-            r = self.client.get(f"{self.base_url}/notice")
+            r = self.client.get(f"{self.base_url}/notice", headers=self._auth_headers())
             if r.status_code == 200:
                 data = r.json()
                 return data.get("content", "") or ""
@@ -497,21 +586,21 @@ class APIClient:
     def save_notice_api(self, content: str):
         """공지 내용 저장 (백엔드 API). content는 <br> 포함해 PWA에서 줄바꿈 표시."""
         try:
-            r = self.client.put(f"{self.base_url}/notice", json={"content": content})
+            r = self.client.put(f"{self.base_url}/notice", json={"content": content}, headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
 
     def get_admins(self):
         try:
-            r = self.client.get(f"{self.base_url}/admins")
+            r = self.client.get(f"{self.base_url}/admins", headers=self._auth_headers())
             return r.json() if r.status_code == 200 else []
         except Exception:
             return []
 
     def create_admin(self, emp_no: str, name: str):
         try:
-            r = self.client.post(f"{self.base_url}/admins", json={"emp_no": emp_no, "name": name})
+            r = self.client.post(f"{self.base_url}/admins", json={"emp_no": emp_no, "name": name}, headers=self._auth_headers())
             if r.status_code == 200:
                 return (True, r.json())
             return (False, (r.json() or {}).get("detail", "등록 실패"))
@@ -520,21 +609,21 @@ class APIClient:
 
     def update_admin(self, user_id: int, name: str):
         try:
-            r = self.client.put(f"{self.base_url}/admins/{user_id}", json={"name": name})
+            r = self.client.put(f"{self.base_url}/admins/{user_id}", json={"name": name}, headers=self._auth_headers())
             return (r.status_code == 200, (r.json() or {}).get("detail", "수정 실패") if r.status_code != 200 else None)
         except Exception as e:
             return (False, str(e))
 
     def delete_admin(self, user_id: int):
         try:
-            r = self.client.delete(f"{self.base_url}/admins/{user_id}")
+            r = self.client.delete(f"{self.base_url}/admins/{user_id}", headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
 
     def reset_admin_device(self, user_id: int):
         try:
-            r = self.client.post(f"{self.base_url}/admins/{user_id}/reset-device")
+            r = self.client.post(f"{self.base_url}/admins/{user_id}/reset-device", headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
@@ -821,7 +910,12 @@ class CompanyScreen(QWidget):
         self.main_win.statusBar().showMessage("수정 중...", 2000)
         self.edit_loader = DataLoader(self.api.update_company, cid, code, name)
         self.edit_loader.finished.connect(self.on_edit_finished)
+        self.edit_loader.error.connect(self.on_edit_error)
         self.edit_loader.start()
+
+    def on_edit_error(self, err_msg):
+        self.edit_btn.setEnabled(True)
+        QMessageBox.warning(self, "오류", f"수정 중 오류가 발생했습니다:\n{err_msg}")
 
     def on_edit_finished(self, data):
         self.edit_btn.setEnabled(True)
@@ -863,7 +957,12 @@ class CompanyScreen(QWidget):
             self.main_win.statusBar().showMessage("삭제 중...", 2000)
             self.del_loader = DataLoader(self.api.delete_company, cid)
             self.del_loader.finished.connect(self.on_delete_finished)
+            self.del_loader.error.connect(self.on_del_error)
             self.del_loader.start()
+
+    def on_del_error(self, err_msg):
+        self.del_btn.setEnabled(True)
+        QMessageBox.warning(self, "오류", f"삭제 중 오류가 발생했습니다:\n{err_msg}")
 
     def on_delete_finished(self, success):
         self.del_btn.setEnabled(True)
@@ -1087,7 +1186,12 @@ class DepartmentScreen(QWidget):
         self.main_win.statusBar().showMessage("부서 수정 중...", 2000)
         self.edit_loader = DataLoader(self.api.update_department, did, code, name)
         self.edit_loader.finished.connect(self.on_edit_finished)
+        self.edit_loader.error.connect(self.on_edit_error)
         self.edit_loader.start()
+
+    def on_edit_error(self, err_msg):
+        self.edit_btn.setEnabled(True)
+        QMessageBox.warning(self, "오류", f"수정 중 오류가 발생했습니다:\n{err_msg}")
 
     def on_edit_finished(self, data):
         self.edit_btn.setEnabled(True)
@@ -1126,7 +1230,12 @@ class DepartmentScreen(QWidget):
             self.main_win.statusBar().showMessage("부서 삭제 중...", 2000)
             self.del_loader = DataLoader(self.api.delete_department, did)
             self.del_loader.finished.connect(self.on_delete_finished)
+            self.del_loader.error.connect(self.on_del_error)
             self.del_loader.start()
+
+    def on_del_error(self, err_msg):
+        self.del_btn.setEnabled(True)
+        QMessageBox.warning(self, "오류", f"삭제 중 오류가 발생했습니다:\n{err_msg}")
 
     def on_delete_finished(self, success):
         self.del_btn.setEnabled(True)
@@ -1782,33 +1891,37 @@ class RawDataScreen(QWidget):
                 if isinstance(widget, QLayout): input_layout.addLayout(widget)
                 else: input_layout.addWidget(widget)
         
-        input_layout.addStretch()
-        
-        # Action Buttons
-        btn_layout = QVBoxLayout()
+        # 기록 등록 버튼: 게스트 인원 밑에 배치
         self.add_btn = QPushButton("기록 등록")
         self.add_btn.setObjectName("PrimaryBtn")
+        self.add_btn.setFixedHeight(40)
         self.add_btn.clicked.connect(self.on_add)
+        input_layout.addWidget(self.add_btn)
         
+        # 기록 수정 버튼: 기록 등록과 같은 간격으로 바로 아래
         self.edit_btn = QPushButton("기록 수정")
         self.edit_btn.setObjectName("SecondaryBtn")
+        self.edit_btn.setFixedHeight(40)
         self.edit_btn.clicked.connect(self.on_update)
         self.edit_btn.setEnabled(False)
+        input_layout.addWidget(self.edit_btn)
         
+        # 기록 삭제 버튼: 기록 수정과 같은 간격으로 바로 아래
         self.del_btn = QPushButton("기록 삭제")
         self.del_btn.setObjectName("DangerBtn")
+        self.del_btn.setFixedHeight(40)
         self.del_btn.clicked.connect(self.on_delete)
         self.del_btn.setEnabled(False)
+        input_layout.addWidget(self.del_btn)
         
+        # 입력창 초기화: 기록 삭제와 같은 간격·같은 크기로 바로 아래
         self.clear_btn = QPushButton("입력창 초기화")
+        self.clear_btn.setObjectName("SecondaryBtn")
         self.clear_btn.clicked.connect(self.clear_inputs)
+        self.clear_btn.setFixedHeight(40)
+        input_layout.addWidget(self.clear_btn)
         
-        btn_layout.addWidget(self.add_btn)
-        btn_layout.addWidget(self.edit_btn)
-        btn_layout.addSpacing(10)
-        btn_layout.addWidget(self.del_btn)
-        btn_layout.addWidget(self.clear_btn)
-        input_layout.addLayout(btn_layout)
+        input_layout.addStretch()
         
         main_h_layout.addWidget(self.input_panel)
         self.current_log_id = None
@@ -2953,15 +3066,20 @@ class AdminScreen(QWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, api=None):
         super().__init__()
-        self.api = APIClient()
+        self.api = api if api is not None else APIClient()
         self.companies_data = []
         self.departments_data = []
         self.setWindowTitle("Meal Auth - Admin Management System")
+        # 화면보다 큰 최소 크기 요구로 setGeometry 경고 나오지 않도록 상한 설정
+        screen = QApplication.primaryScreen()
+        if screen:
+            available = screen.availableGeometry()
+            max_w, max_h = available.width(), available.height()
+            self.setMinimumSize(min(1024, max_w), min(700, max_h))
         self.resize(1280, 850)
         # 화면 가용 영역 안으로 초기 크기만 제한 (이후 사용자가 창 크기 조절 가능)
-        screen = QApplication.primaryScreen()
         if screen:
             available = screen.availableGeometry()
             w = min(self.width(), available.width())
@@ -3145,6 +3263,10 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = MainWindow()
+    login_dialog = AdminLoginDialog()
+    if login_dialog.exec_() != QDialog.Accepted or not getattr(login_dialog, "token", None):
+        sys.exit(0)
+    api = APIClient(token=login_dialog.token)
+    window = MainWindow(api=api)
     window.show()
     sys.exit(app.exec_())

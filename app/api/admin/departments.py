@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import Department, AuditLog
 from app.schemas.schemas import DepartmentCreate, DepartmentUpdate, DepartmentResponse
 from app.api.admin.utils import record_audit_log
@@ -10,7 +11,7 @@ from typing import List, Optional
 router = APIRouter()
 
 @router.get("", response_model=List[DepartmentResponse])
-async def get_departments(company_id: Optional[int] = None, db: AsyncSession = Depends(get_db)):
+async def get_departments(company_id: Optional[int] = None, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     query = select(Department)
     if company_id:
         query = query.where(Department.company_id == company_id)
@@ -18,7 +19,7 @@ async def get_departments(company_id: Optional[int] = None, db: AsyncSession = D
     return result.scalars().all()
 
 @router.post("", response_model=DepartmentResponse)
-async def create_department(dept: DepartmentCreate, db: AsyncSession = Depends(get_db)):
+async def create_department(dept: DepartmentCreate, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     # Check if code already exists within the company
     existing = await db.execute(
         select(Department).where(
@@ -42,7 +43,7 @@ async def create_department(dept: DepartmentCreate, db: AsyncSession = Depends(g
     return new_dept
 
 @router.patch("/{dept_id}", response_model=DepartmentResponse)
-async def update_department(dept_id: int, dept_in: DepartmentUpdate, db: AsyncSession = Depends(get_db)):
+async def update_department(dept_id: int, dept_in: DepartmentUpdate, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     result = await db.execute(select(Department).where(Department.id == dept_id))
     db_dept = result.scalar_one_or_none()
     if not db_dept:
@@ -68,7 +69,7 @@ async def update_department(dept_id: int, dept_in: DepartmentUpdate, db: AsyncSe
     return db_dept
 
 @router.delete("/{dept_id}")
-async def delete_department(dept_id: int, db: AsyncSession = Depends(get_db)):
+async def delete_department(dept_id: int, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
     result = await db.execute(select(Department).where(Department.id == dept_id))
     db_dept = result.scalar_one_or_none()
     if not db_dept:

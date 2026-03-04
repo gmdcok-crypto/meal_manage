@@ -1,10 +1,11 @@
+from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import AuditLog, User
 
 async def record_audit_log(
     db: AsyncSession,
-    operator_id: int,
+    operator_id: Optional[int],
     action: str,
     target_table: str,
     target_id: int,

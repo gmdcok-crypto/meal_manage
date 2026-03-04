@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from sqlalchemy import select, update, and_, or_, func
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import User, AuditLog
 from app.schemas.schemas import UserResponse, UserCreate, UserUpdate
 from .utils import record_audit_log
@@ -18,12 +19,17 @@ async def list_employees(
     dept: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     query = select(User).options(joinedload(User.department_ref))
     filters = []
     if dept:
-        filters.append(User.department_id == int(dept))
+        try:
+            dept_id = int(dept)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="부서 ID가 올바르지 않습니다.")
+        filters.append(User.department_id == dept_id)
     if status:
         filters.append(User.status == status)
     
@@ -45,7 +51,8 @@ async def list_employees(
 async def create_employee(
     user_in: UserCreate,
     operator_id: int = 1, # Placeholder for current user auth
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     # Check if emp_no already exists
     existing = await db.execute(select(User).where(User.emp_no == user_in.emp_no))
@@ -97,7 +104,8 @@ async def update_employee(
     user_id: int,
     user_in: UserUpdate,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -136,7 +144,8 @@ async def delete_employee_soft(
     user_id: int,
     permanent: bool = Query(False, description="True면 DB에서 완전 삭제"),
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -175,7 +184,8 @@ async def delete_employee_soft(
 async def reset_device_auth(
     user_id: int,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
@@ -199,7 +209,8 @@ async def import_employees_excel(
     file_content: bytes,
     company_id: int,
     operator_id: int = 1,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     import pandas as pd
     from io import BytesIO
@@ -231,9 +242,13 @@ async def import_employees_excel(
     new_depts_count = 0
 
     for _, row in df.iterrows():
+        if pd.isna(row.get("사번")) or pd.isna(row.get("성명")) or pd.isna(row.get("부서명")):
+            continue
         emp_no = str(row["사번"]).strip()
         name = str(row["성명"]).strip()
         dept_name = str(row["부서명"]).strip()
+        if not emp_no or not name or not dept_name or emp_no.lower() == "nan":
+            continue
 
         # 3. Handle department (for both new and re-register)
         if dept_name not in existing_depts:

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.core.database import get_db
+from app.api.auth import get_current_admin
 from app.models.models import MealLog, User, MealPolicy, Department
 from app.core.time_utils import kst_date_range_to_naive, utc_to_kst_str
 from datetime import date, datetime, timedelta
@@ -12,7 +13,8 @@ router = APIRouter(tags=["reports"])
 @router.get("/daily")
 async def get_daily_report(
     target_date: date,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     start_naive, end_naive = kst_date_range_to_naive(target_date, target_date)
     query = select(
@@ -34,7 +36,8 @@ async def get_daily_report(
 async def get_monthly_report(
     year: int,
     month: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     start_date = date(year, month, 1)
     end_date = date(year, month + 1, 1) if month < 12 else date(year + 1, 1, 1)
@@ -70,7 +73,8 @@ async def get_monthly_report(
 async def get_department_report(
     start_date: date,
     end_date: date,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     start_naive, end_naive = kst_date_range_to_naive(start_date, end_date)
     query = select(
@@ -92,7 +96,8 @@ async def get_department_report(
 async def get_excel_report(
     year: int,
     month: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(get_current_admin),
 ):
     import pandas as pd
     from io import BytesIO
@@ -117,27 +122,27 @@ async def get_excel_report(
     logs = result.scalars().all()
     
     if not logs:
-        # Return empty excel or handle as needed
-        pass
-
-    # Prepare data for DataFrames (날짜는 KST 기준 표시)
-    data = []
-    for log in logs:
-        kst_date_str = (utc_to_kst_str(log.created_at) or "")[:10]
-        data.append({
-            "날짜": kst_date_str or (log.created_at.date() if log.created_at else ""),
-            "사번": log.user.emp_no if log.user else "N/A",
-            "이름": log.user.name if log.user else "N/A",
-            "부서": log.user.department_name if log.user else "N/A",
-            "식사종류": (getattr(log.policy, "meal_type", None) if log.policy else None) or "번외",
-            "인원": 1 + (log.guest_count or 0),
-            "단가": log.final_price or 0,
-            "금액": (log.final_price or 0) * (1 + (log.guest_count or 0))
-        })
+        data = []
+    else:
+        data = []
+        for log in logs:
+            kst_date_str = (utc_to_kst_str(log.created_at) or "")[:10]
+            data.append({
+                "날짜": kst_date_str or (log.created_at.date() if log.created_at else ""),
+                "사번": log.user.emp_no if log.user else "N/A",
+                "이름": log.user.name if log.user else "N/A",
+                "부서": log.user.department_name if log.user else "N/A",
+                "식사종류": (getattr(log.policy, "meal_type", None) if log.policy else None) or "번외",
+                "인원": 1 + (log.guest_count or 0),
+                "단가": log.final_price or 0,
+                "금액": (log.final_price or 0) * (1 + (log.guest_count or 0))
+            })
     
     df_raw = pd.DataFrame(data)
+    if df_raw.empty:
+        df_raw = pd.DataFrame(columns=["날짜", "사번", "이름", "부서", "식사종류", "인원", "단가", "금액"])
     
-    # Sheet 1: 부서별 합계
+    # Sheet 1: 부서별 합계 (빈 DataFrame이어도 groupby 가능)
     df_dept = df_raw.groupby("부서").agg({
         "인원": "sum",
         "금액": "sum"
