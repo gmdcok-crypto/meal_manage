@@ -70,10 +70,15 @@ async def process_qr_scan(
     device = await get_device_settings_from_db(db)
     allowed = device.get("allowed_qr_list") or []
     if isinstance(allowed, list) and len(allowed) > 0:
-        qr_val = (body.qr_data or "").strip()
+        def _norm(s):
+            if s is None or not isinstance(s, str):
+                return ""
+            return s.strip().replace("\ufeff", "").replace("\r", "").replace("\n", "").strip()
+        qr_val = _norm(body.qr_data)
         if not qr_val:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QR 코드를 스캔해 주세요.")
-        allowed_set = {s.strip() for s in allowed if s and isinstance(s, str)}
+        allowed_set = {_norm(s) for s in allowed if s is not None}
+        allowed_set.discard("")
         if qr_val not in allowed_set:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
 
