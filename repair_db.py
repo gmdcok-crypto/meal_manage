@@ -54,6 +54,19 @@ async def repair():
         except Exception as e:
             print(f"Note: cafeteria_admins: {e}")
 
+        # 3-2. 장치 설정 (PC 앱 설정 메뉴)
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    `key` VARCHAR(50) NOT NULL UNIQUE,
+                    value JSON
+                )
+            """))
+            print("Ensured 'system_settings' table.")
+        except Exception as e:
+            print(f"Note: system_settings: {e}")
+
         # 4. Check and add/remove columns for data consistency
         # Add 'code' to companies if missing
         try:

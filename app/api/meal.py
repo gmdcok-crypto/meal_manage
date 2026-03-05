@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.models.models import MealPolicy, User, MealLog
 from app.schemas.schemas import MealPolicyResponse
 from app.core.time_utils import utc_now, KST
+from app.api.admin.settings import get_device_settings_from_db
 
 router = APIRouter(prefix="/meal", tags=["meal"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/verify_device")
@@ -104,6 +105,40 @@ async def process_qr_scan(
             "name": current_user.name
         }
     }))
+    
+    # 식권 프린터·경광등 (장치 설정 DB 우선, 없으면 config fallback)
+    device = await get_device_settings_from_db(db)
+    meal_type_label = {"breakfast": "조식", "lunch": "중식", "dinner": "석식"}.get(
+        (policy.meal_type or "").lower(), (policy.meal_type or "번외")
+    )
+    date_time_str = event_kst.strftime("%Y-%m-%d %H:%M") if event_kst else ""
+    # 프린터 (설정 사용 시에만, 백그라운드·실패해도 API 성공)
+    if device.get("printer_enabled") and (device.get("printer_host") or "").strip():
+        try:
+            import bixolon_print
+            asyncio.create_task(asyncio.to_thread(
+                bixolon_print.print_image_only,
+                host=(device.get("printer_host") or "").strip(),
+                port=int(device.get("printer_port") or 9100),
+                stored_image_number=int(device.get("printer_stored_image_number") or 1),
+                emp_no=current_user.emp_no or "",
+                name=current_user.name or "",
+                date_time_str=date_time_str,
+                meal_type=meal_type_label,
+            ))
+        except Exception:
+            pass
+    # 경광등 (설정 사용 시에만, 백그라운드·실패해도 API 성공)
+    if device.get("qlight_enabled") and (device.get("qlight_host") or "").strip():
+        try:
+            import qlight_st45l
+            asyncio.create_task(asyncio.to_thread(
+                qlight_st45l.trigger_ok,
+                host=(device.get("qlight_host") or "").strip(),
+                port=int(device.get("qlight_port") or 20000),
+            ))
+        except Exception:
+            pass
     
     return {
         "status": "success",

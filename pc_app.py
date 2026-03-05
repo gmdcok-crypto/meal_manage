@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QStackedWidget, QTableWidget, QTableWidgetItem,
     QLineEdit, QComboBox, QFrame, QHeaderView, QGraphicsDropShadowEffect,
-    QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout, QPlainTextEdit, QSizePolicy
+    QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout, QPlainTextEdit, QSizePolicy, QCheckBox, QSpinBox, QGroupBox
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QTime, QDate, QByteArray
 from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QResizeEvent
@@ -627,6 +627,25 @@ class APIClient:
             return r.status_code == 200
         except Exception:
             return False
+
+    def get_device_settings(self):
+        """장치 설정(프린터·경광등) 조회."""
+        try:
+            r = self.client.get(f"{self.base_url}/settings/device", headers=self._auth_headers())
+            return r.json() if r.status_code == 200 else None
+        except Exception:
+            return None
+
+    def put_device_settings(self, data: dict):
+        """장치 설정 저장. 성공 시 (True, 응답), 실패 시 (False, 메시지)."""
+        try:
+            r = self.client.put(f"{self.base_url}/settings/device", json=data, headers=self._auth_headers())
+            body = r.json() if r.status_code in (200, 400) else {}
+            if r.status_code == 200:
+                return (True, body)
+            return (False, (body.get("detail") or r.text or "저장 실패"))
+        except Exception as e:
+            return (False, str(e))
 
     def close(self):
         self.client.close()
@@ -3065,6 +3084,115 @@ class AdminScreen(QWidget):
             QMessageBox.warning(self, "오류", "초기화에 실패했습니다.")
 
 
+class SettingsScreen(QWidget):
+    """장치 설정: 프린터·경광등 사용 여부 및 IP/포트."""
+    def __init__(self, api, main_win):
+        super().__init__()
+        self.api = api
+        self.main_win = main_win
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setSpacing(20)
+
+        header = QLabel("설정")
+        header.setObjectName("HeaderTitle")
+        layout.addWidget(header)
+
+        # 프린터
+        printer_group = QGroupBox("식권 프린터 (빅솔론)")
+        printer_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
+        printer_layout = QFormLayout(printer_group)
+        self.printer_enabled = QCheckBox("프린터 사용")
+        self.printer_enabled.setStyleSheet("color: #f8fafc;")
+        self.printer_enabled.stateChanged.connect(self._on_printer_toggled)
+        printer_layout.addRow(self.printer_enabled)
+        self.printer_host = QLineEdit()
+        self.printer_host.setPlaceholderText("IP 주소 (예: 192.168.0.107)")
+        self.printer_host.setMinimumHeight(40)
+        printer_layout.addRow("IP:", self.printer_host)
+        self.printer_port = QSpinBox()
+        self.printer_port.setRange(1, 65535)
+        self.printer_port.setValue(9100)
+        self.printer_port.setMinimumHeight(40)
+        printer_layout.addRow("포트:", self.printer_port)
+        layout.addWidget(printer_group)
+
+        # 경광등
+        qlight_group = QGroupBox("경광등 (Q라이트)")
+        qlight_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
+        qlight_layout = QFormLayout(qlight_group)
+        self.qlight_enabled = QCheckBox("경광등 사용")
+        self.qlight_enabled.setStyleSheet("color: #f8fafc;")
+        self.qlight_enabled.stateChanged.connect(self._on_qlight_toggled)
+        qlight_layout.addRow(self.qlight_enabled)
+        self.qlight_host = QLineEdit()
+        self.qlight_host.setPlaceholderText("IP 주소 (예: 192.168.0.108)")
+        self.qlight_host.setMinimumHeight(40)
+        qlight_layout.addRow("IP:", self.qlight_host)
+        self.qlight_port = QSpinBox()
+        self.qlight_port.setRange(1, 65535)
+        self.qlight_port.setValue(20000)
+        self.qlight_port.setMinimumHeight(40)
+        qlight_layout.addRow("포트:", self.qlight_port)
+        layout.addWidget(qlight_group)
+
+        btn_row = QHBoxLayout()
+        save_btn = QPushButton("저장")
+        save_btn.setObjectName("PrimaryBtn")
+        save_btn.setMinimumHeight(44)
+        save_btn.clicked.connect(self.save_settings)
+        btn_row.addWidget(save_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
+        layout.addStretch()
+
+    def _on_printer_toggled(self):
+        enabled = self.printer_enabled.isChecked()
+        self.printer_host.setEnabled(enabled)
+        self.printer_port.setEnabled(enabled)
+
+    def _on_qlight_toggled(self):
+        enabled = self.qlight_enabled.isChecked()
+        self.qlight_host.setEnabled(enabled)
+        self.qlight_port.setEnabled(enabled)
+
+    def load_data(self):
+        data = self.api.get_device_settings() if self.api else None
+        if not data:
+            self.printer_enabled.setChecked(False)
+            self.printer_host.setText("")
+            self.printer_port.setValue(9100)
+            self.qlight_enabled.setChecked(False)
+            self.qlight_host.setText("")
+            self.qlight_port.setValue(20000)
+            self._on_printer_toggled()
+            self._on_qlight_toggled()
+            return
+        self.printer_enabled.setChecked(bool(data.get("printer_enabled")))
+        self.printer_host.setText((data.get("printer_host") or "").strip())
+        self.printer_port.setValue(int(data.get("printer_port") or 9100))
+        self.qlight_enabled.setChecked(bool(data.get("qlight_enabled")))
+        self.qlight_host.setText((data.get("qlight_host") or "").strip())
+        self.qlight_port.setValue(int(data.get("qlight_port") or 20000))
+        self._on_printer_toggled()
+        self._on_qlight_toggled()
+
+    def save_settings(self):
+        payload = {
+            "printer_enabled": self.printer_enabled.isChecked(),
+            "printer_host": (self.printer_host.text() or "").strip(),
+            "printer_port": self.printer_port.value(),
+            "qlight_enabled": self.qlight_enabled.isChecked(),
+            "qlight_host": (self.qlight_host.text() or "").strip(),
+            "qlight_port": self.qlight_port.value(),
+        }
+        ok, result = self.api.put_device_settings(payload)
+        if ok:
+            QMessageBox.information(self, "저장 완료", "장치 설정이 저장되었습니다.\nQR 인증 시 적용됩니다.")
+        else:
+            QMessageBox.warning(self, "저장 실패", result or "저장에 실패했습니다.")
+
+
 class MainWindow(QMainWindow):
     def __init__(self, api=None):
         super().__init__()
@@ -3101,7 +3229,7 @@ class MainWindow(QMainWindow):
         self.nav_btns = []
         menus = [
             ("대시보드", 0), ("회사 관리", 1), ("부서 관리", 2),
-            ("사원 관리", 3), ("원시 데이터", 4), ("식사 정책", 5), ("보고서", 6), ("공지사항", 7), ("관리자", 8)
+            ("사원 관리", 3), ("원시 데이터", 4), ("식사 정책", 5), ("보고서", 6), ("공지사항", 7), ("관리자", 8), ("설정", 9)
         ]
         for name, idx in menus:
             btn = QPushButton(name)
@@ -3125,6 +3253,7 @@ class MainWindow(QMainWindow):
         self.reports = ReportScreen(self.api, self)
         self.notice_screen = NoticeScreen(self)
         self.admin_screen = AdminScreen(self.api, self)
+        self.settings_screen = SettingsScreen(self.api, self)
         self.stack.addWidget(self.dashboard)
         self.stack.addWidget(self.companies)
         self.stack.addWidget(self.departments)
@@ -3134,6 +3263,7 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.reports)
         self.stack.addWidget(self.notice_screen)
         self.stack.addWidget(self.admin_screen)
+        self.stack.addWidget(self.settings_screen)
         self.content_layout.addWidget(self.stack)
         main_layout.addWidget(content_container)
         self.switch_screen(0)
@@ -3254,6 +3384,8 @@ class MainWindow(QMainWindow):
             self.notice_screen.load_notice()
         if idx == 8:
             self.admin_screen.load_data()
+        if idx == 9:
+            self.settings_screen.load_data()
 
     def closeEvent(self, event):
         if hasattr(self, 'ws_client'):

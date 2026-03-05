@@ -113,3 +113,11 @@ class AuditLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     operator = relationship("User")
+
+
+class SystemSetting(Base):
+    """키-값 형태 시스템 설정 (장치 설정 등). key='device' → 프린터/경광등 설정."""
+    __tablename__ = "system_settings"
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(50), unique=True, nullable=False, index=True)
+    value = Column(JSON, nullable=True, default=dict)

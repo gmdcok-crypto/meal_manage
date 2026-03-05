@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     NAVER_CLIENT_ID: str = ""
     GOOGLE_CLIENT_ID: str = ""
     
+    # 식권 프린터 (빅솔론). 비어 있으면 인쇄 생략
+    PRINTER_HOST: str = ""
+    PRINTER_PORT: int = 9100
+    PRINTER_STORED_IMAGE_NUMBER: int = 1
+    # 경광등 (Q라이트). DB 장치 설정에서 우선 사용
+    QLIGHT_HOST: str = ""
+    QLIGHT_PORT: int = 20000
+    
     @model_validator(mode="after")
     def require_secrets_in_production(self):
         if getattr(self, "ENV", "development").lower() in ("production", "prod"):

@@ -188,3 +188,24 @@ class VerifyDeviceRequest(BaseModel):
     emp_no: str
     name: str
     password: Optional[str] = ""  # 최초 인증 시 필수, 재로그인 시 사용
+
+
+# 장치 설정 (프린터·경광등) - PC 앱 설정 메뉴용
+class DeviceSettingsResponse(BaseModel):
+    printer_enabled: bool = False
+    printer_host: str = ""
+    printer_port: int = 9100
+    printer_stored_image_number: int = 1
+    qlight_enabled: bool = False
+    qlight_host: str = ""
+    qlight_port: int = 20000
+
+
+class DeviceSettingsUpdate(BaseModel):
+    printer_enabled: Optional[bool] = None
+    printer_host: Optional[str] = None
+    printer_port: Optional[int] = None
+    printer_stored_image_number: Optional[int] = None
+    qlight_enabled: Optional[bool] = None
+    qlight_host: Optional[str] = None
+    qlight_port: Optional[int] = None
