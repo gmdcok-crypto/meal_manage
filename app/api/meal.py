@@ -9,7 +9,6 @@ from app.core.config import settings
 from app.models.models import MealPolicy, User, MealLog
 from app.schemas.schemas import MealPolicyResponse
 from app.core.time_utils import utc_now, KST
-from app.api.admin.settings import get_device_settings_from_db
 
 router = APIRouter(prefix="/meal", tags=["meal"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/verify_device")
@@ -107,6 +106,7 @@ async def process_qr_scan(
     }))
     
     # 식권 프린터·경광등 (장치 설정 DB 우선, 없으면 config fallback)
+    from app.api.admin.settings import get_device_settings_from_db
     device = await get_device_settings_from_db(db)
     meal_type_label = {"breakfast": "조식", "lunch": "중식", "dinner": "석식"}.get(
         (policy.meal_type or "").lower(), (policy.meal_type or "번외")
