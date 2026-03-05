@@ -301,10 +301,15 @@ const app = {
                 try { localStorage.setItem('meal_lastAuthAt', String(this.state.lastAuthAt)); } catch (e) {}
                 this.startAuth();
             } else {
-                if (res.status === 401 || res.status === 403) {
+                var errMsg = detailToMessage(data.detail);
+                if (res.status === 401) {
+                    showAlert("기기가 초기화되었거나 인증이 만료되었습니다. 다시 로그인(재인증)해 주세요.", function () { app.logout(); });
+                } else if (res.status === 403 && errMsg && (errMsg.indexOf('QR') !== -1 || errMsg.indexOf('등록') !== -1)) {
+                    showAlert(errMsg || "식수 인증에 실패했습니다.", function () { app.showPage('page-home'); });
+                } else if (res.status === 403) {
                     showAlert("기기가 초기화되었거나 인증이 만료되었습니다. 다시 로그인(재인증)해 주세요.", function () { app.logout(); });
                 } else {
-                    showAlert(detailToMessage(data.detail) || "식수 인증에 실패했습니다.", function () { app.showPage('page-home'); });
+                    showAlert(errMsg || "식수 인증에 실패했습니다.", function () { app.showPage('page-home'); });
                 }
             }
         } catch (e) {
