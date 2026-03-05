@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 import logging
 
+# 로그가 어디에도 안 찍히지 않도록 기본 설정 (한 번만 적용)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
 from app.api import auth, meal, admin
 from app.core.database import engine, Base
 
@@ -13,10 +16,12 @@ app = FastAPI(title="PWA Meal Auth System")
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 logging.getLogger("aiomysql").setLevel(logging.WARNING)
 
-# 앱 시작 시 DB 테이블 생성
+_logger = logging.getLogger("meal_auth")
+
+# 앱 시작 시
 @app.on_event("startup")
 async def startup():
-    pass
+    _logger.info("Application started (server ready)")
 
 # CORS 설정
 app.add_middleware(
