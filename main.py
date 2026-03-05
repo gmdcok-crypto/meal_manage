@@ -9,6 +9,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 from app.api import auth, meal, admin
 from app.core.database import engine, Base
+from app.models.models import SystemSetting  # Base.metadata에 등록 (startup에서 create_all용)
 
 app = FastAPI(title="PWA Meal Auth System")
 
@@ -22,6 +23,13 @@ _logger = logging.getLogger("meal_auth")
 @app.on_event("startup")
 async def startup():
     _logger.info("서버 올라옴 (Application started)")
+    # Railway 등 배포 환경에서 repair_db 미실행 시 system_settings 테이블 자동 생성
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn))
+        _logger.info("DB 스키마 확인 완료 (system_settings 등)")
+    except Exception as e:
+        _logger.warning("DB 스키마 확인 중 예외 (무시하고 진행): %s", e)
 
 # CORS 설정
 app.add_middleware(
