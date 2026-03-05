@@ -6,6 +6,7 @@ import json
 import httpx
 import asyncio
 import websockets
+import threading
 from datetime import datetime, date, timedelta, timezone
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -28,6 +29,45 @@ NOTICE_HTML_PATH = os.path.join(_MEAL_MANAGE_ROOT, "static", "notice.html")
 _ws_origin = _API_BASE.replace("https://", "wss://").replace("http://", "ws://").split("/api")[0]
 WS_URL = _ws_origin + "/api/admin/ws"
 API_TIMEOUT = 10.0
+
+
+def _run_print_and_qlight(meal_data: dict, device_settings: dict):
+    """백그라운드 스레드에서 프린터·경광등 신호 전송 (PC 앱과 같은 망의 장치용)."""
+    if not device_settings:
+        return
+    # 프로젝트 루트에서 실행하지 않아도 모듈 로드되도록
+    if _MEAL_MANAGE_ROOT not in sys.path:
+        sys.path.insert(0, _MEAL_MANAGE_ROOT)
+    emp_no = (meal_data.get("emp_no") or "").strip()
+    name = (meal_data.get("name") or "").strip()
+    meal_type_label = (meal_data.get("meal_type_label") or "").strip()
+    date_time_str = (meal_data.get("date_time_str") or "").strip()
+    # 프린터
+    if device_settings.get("printer_enabled") and (device_settings.get("printer_host") or "").strip():
+        try:
+            import bixolon_print
+            bixolon_print.print_image_only(
+                host=(device_settings.get("printer_host") or "").strip(),
+                port=int(device_settings.get("printer_port") or 9100),
+                stored_image_number=int(device_settings.get("printer_stored_image_number") or 1),
+                emp_no=emp_no,
+                name=name,
+                date_time_str=date_time_str,
+                meal_type=meal_type_label,
+            )
+        except Exception:
+            pass
+    # 경광등
+    if device_settings.get("qlight_enabled") and (device_settings.get("qlight_host") or "").strip():
+        try:
+            import qlight_st45l
+            qlight_st45l.trigger_ok(
+                host=(device_settings.get("qlight_host") or "").strip(),
+                port=int(device_settings.get("qlight_port") or 20000),
+            )
+        except Exception:
+            pass
+
 
 # --- WebSocket Client Thread ---
 class WSClient(QThread):
@@ -3294,6 +3334,21 @@ class MainWindow(QMainWindow):
         msg_type = data.get("type")
         if msg_type in ["USER_VERIFIED", "MEAL_LOG_CREATED"]:
             self.refresh_stats() # refresh active screen and dashboard
+        # PC 앱에서 프린터·경광등 신호 전송 (QR 인증 시 WebSocket으로 수신 후 로컬에서 출력)
+        if msg_type == "MEAL_LOG_CREATED":
+            self._trigger_devices_from_meal_data(data.get("data") or {})
+
+    def _trigger_devices_from_meal_data(self, meal_data: dict):
+        """MEAL_LOG_CREATED 수신 시 설정에 따라 PC에서 프린터·경광등 신호 전송."""
+        if not meal_data:
+            return
+        device = self.api.get_device_settings() if self.api else None
+        if not device:
+            return
+        if not (device.get("printer_enabled") or device.get("qlight_enabled")):
+            return
+        t = threading.Thread(target=_run_print_and_qlight, args=(meal_data, device), daemon=True)
+        t.start()
 
     def on_company_changed(self):
         self.company_sync_loader = DataLoader(self.api.get_companies)
