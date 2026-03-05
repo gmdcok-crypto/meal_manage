@@ -2,11 +2,16 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
+import logging
 
 from app.api import auth, meal, admin
 from app.core.database import engine, Base
 
 app = FastAPI(title="PWA Meal Auth System")
+
+# SQLAlchemy/aiomysql의 "connection open" 등이 stderr로 나가 Railway에서 Error로 표시되는 것 방지
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("aiomysql").setLevel(logging.WARNING)
 
 # 앱 시작 시 DB 테이블 생성
 @app.on_event("startup")
