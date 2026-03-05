@@ -21,7 +21,7 @@ _logger = logging.getLogger("meal_auth")
 # 앱 시작 시
 @app.on_event("startup")
 async def startup():
-    _logger.info("Application started (server ready)")
+    _logger.info("서버 올라옴 (Application started)")
 
 # CORS 설정
 app.add_middleware(
