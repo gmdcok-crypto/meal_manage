@@ -80,8 +80,7 @@ async def process_qr_scan(
         allowed_set = {_norm(s) for s in allowed if s is not None}
         allowed_set.discard("")
         if qr_val not in allowed_set:
-            hint = " 스캔된 내용: {}자. 등록된 코드(예: bluecom_meal_management)는 24자입니다.".format(len(qr_val))
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다." + hint)
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
 
     # 저장할 시각을 한 번 정한 뒤, 그 시각의 한국 시간(KST)으로 식사 종류(정책) 판단 및 로그 저장 (서버의 "지금"이 아닌 로그 시각 기준)
     event_kst = utc_now().astimezone(KST)

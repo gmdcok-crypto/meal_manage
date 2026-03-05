@@ -3183,6 +3183,7 @@ class SettingsScreen(QWidget):
         self.allowed_qr_edit = QPlainTextEdit()
         self.allowed_qr_edit.setPlaceholderText("한 줄에 QR 내용 하나씩 입력. 비우면 아무 QR나 인증됩니다.")
         self.allowed_qr_edit.setMinimumHeight(100)
+        self.allowed_qr_edit.setLineWrapMode(QPlainTextEdit.NoWrap)  # 긴 코드가 줄바꿈되어 일부만 복사되는 것 방지
         self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 14px;")
         qr_layout.addWidget(self.allowed_qr_edit)
         layout.addWidget(qr_group)
