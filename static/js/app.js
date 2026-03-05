@@ -1,10 +1,23 @@
 /* 커스텀 알림: PWA·크롬 동일 스타일, 도메인/내용 라벨 없음 */
+function detailToMessage(detail) {
+    if (detail == null) return '';
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail.length > 0) {
+        var first = detail[0];
+        if (typeof first === 'string') return first;
+        if (first && typeof first.msg === 'string') return first.msg;
+    }
+    if (typeof detail === 'object' && (detail.msg || detail.message)) return detail.msg || detail.message;
+    return '';
+}
+
 function showAlert(message, onConfirm) {
     var overlay = document.getElementById('alert-overlay');
     var msgEl = document.getElementById('alert-message');
     var btn = document.getElementById('alert-confirm');
     if (!overlay || !msgEl || !btn) return;
-    msgEl.textContent = message;
+    var text = typeof message === 'string' ? message : detailToMessage(message);
+    msgEl.textContent = text || '(알 수 없는 오류)';
     overlay.setAttribute('aria-hidden', 'false');
     var handler = function () {
         btn.onclick = null;
@@ -159,7 +172,7 @@ const app = {
 
                 showAlert("기기 인증이 완료되었습니다. 이제 스캔 버튼을 눌러주세요.", function () { app.showPage('page-home'); });
             } else {
-                showAlert(data.detail || "인증에 실패했습니다.");
+                showAlert(detailToMessage(data.detail) || "인증에 실패했습니다.");
             }
         } catch (e) {
             showAlert("서버 연결 실패: " + e.message);
@@ -291,7 +304,7 @@ const app = {
                 if (res.status === 401 || res.status === 403) {
                     showAlert("기기가 초기화되었거나 인증이 만료되었습니다. 다시 로그인(재인증)해 주세요.", function () { app.logout(); });
                 } else {
-                    showAlert(data.detail || "식수 인증에 실패했습니다.", function () { app.showPage('page-home'); });
+                    showAlert(detailToMessage(data.detail) || "식수 인증에 실패했습니다.", function () { app.showPage('page-home'); });
                 }
             }
         } catch (e) {
