@@ -190,7 +190,7 @@ class VerifyDeviceRequest(BaseModel):
     password: Optional[str] = ""  # 최초 인증 시 필수, 재로그인 시 사용
 
 
-# 장치 설정 (프린터·경광등) - PC 앱 설정 메뉴용
+# 장치 설정 (프린터·경광등·허용 QR) - PC 앱 설정 메뉴용
 class DeviceSettingsResponse(BaseModel):
     printer_enabled: bool = False
     printer_host: str = ""
@@ -199,6 +199,7 @@ class DeviceSettingsResponse(BaseModel):
     qlight_enabled: bool = False
     qlight_host: str = ""
     qlight_port: int = 20000
+    allowed_qr_list: List[str] = []  # 비어 있으면 모든 QR 허용, 있으면 목록에 있는 QR만 인증
 
 
 class DeviceSettingsUpdate(BaseModel):
@@ -209,3 +210,4 @@ class DeviceSettingsUpdate(BaseModel):
     qlight_enabled: Optional[bool] = None
     qlight_host: Optional[str] = None
     qlight_port: Optional[int] = None
+    allowed_qr_list: Optional[List[str]] = None

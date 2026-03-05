@@ -22,6 +22,7 @@ def _default_device_settings() -> dict:
         "qlight_enabled": False,
         "qlight_host": (getattr(settings, "QLIGHT_HOST", None) or "").strip(),
         "qlight_port": getattr(settings, "QLIGHT_PORT", 20000),
+        "allowed_qr_list": ["bluecom_meal_management"],  # 기본 허용 QR (설정에서 변경 가능)
     }
 
 
@@ -34,7 +35,12 @@ async def get_device_settings_from_db(db: AsyncSession) -> dict:
     if not row or not isinstance(row.value, dict):
         return _default_device_settings()
     defaults = _default_device_settings()
-    defaults.update({k: v for k, v in row.value.items() if k in defaults})
+    for k, v in row.value.items():
+        if k not in defaults:
+            continue
+        if k == "allowed_qr_list" and not isinstance(v, list):
+            v = []
+        defaults[k] = v
     return defaults
 
 

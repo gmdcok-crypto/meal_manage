@@ -4,6 +4,8 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from jose import jwt, JWTError
+from typing import Optional
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.models import MealPolicy, User, MealLog
@@ -12,6 +14,11 @@ from app.core.time_utils import utc_now, KST
 
 router = APIRouter(prefix="/meal", tags=["meal"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/verify_device")
+
+
+class QRScanBody(BaseModel):
+    qr_data: Optional[str] = None  # 스캔한 QR 내용. 허용 목록 사용 시 필수
+
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -54,9 +61,22 @@ async def get_today_policies(db: AsyncSession = Depends(get_db)):
 
 @router.post("/qr-scan")
 async def process_qr_scan(
+    body: QRScanBody,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    # 허용 QR 목록이 있으면, 스캔한 QR이 목록에 있을 때만 인증
+    from app.api.admin.settings import get_device_settings_from_db
+    device = await get_device_settings_from_db(db)
+    allowed = device.get("allowed_qr_list") or []
+    if isinstance(allowed, list) and len(allowed) > 0:
+        qr_val = (body.qr_data or "").strip()
+        if not qr_val:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QR 코드를 스캔해 주세요.")
+        allowed_set = {s.strip() for s in allowed if s and isinstance(s, str)}
+        if qr_val not in allowed_set:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
+
     # 저장할 시각을 한 번 정한 뒤, 그 시각의 한국 시간(KST)으로 식사 종류(정책) 판단 및 로그 저장 (서버의 "지금"이 아닌 로그 시각 기준)
     event_kst = utc_now().astimezone(KST)
     log_time_kst = event_kst.time()

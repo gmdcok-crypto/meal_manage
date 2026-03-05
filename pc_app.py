@@ -3176,6 +3176,17 @@ class SettingsScreen(QWidget):
         qlight_layout.addRow("포트:", self.qlight_port)
         layout.addWidget(qlight_group)
 
+        # 허용 QR 코드 (비우면 모든 QR 허용)
+        qr_group = QGroupBox("허용 QR 코드")
+        qr_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
+        qr_layout = QVBoxLayout(qr_group)
+        self.allowed_qr_edit = QPlainTextEdit()
+        self.allowed_qr_edit.setPlaceholderText("한 줄에 QR 내용 하나씩 입력. 비우면 아무 QR나 인증됩니다.")
+        self.allowed_qr_edit.setMinimumHeight(100)
+        self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 14px;")
+        qr_layout.addWidget(self.allowed_qr_edit)
+        layout.addWidget(qr_group)
+
         btn_row = QHBoxLayout()
         save_btn = QPushButton("저장")
         save_btn.setObjectName("PrimaryBtn")
@@ -3205,6 +3216,7 @@ class SettingsScreen(QWidget):
             self.qlight_enabled.setChecked(False)
             self.qlight_host.setText("")
             self.qlight_port.setValue(20000)
+            self.allowed_qr_edit.setPlainText("")
             self._on_printer_toggled()
             self._on_qlight_toggled()
             return
@@ -3214,10 +3226,17 @@ class SettingsScreen(QWidget):
         self.qlight_enabled.setChecked(bool(data.get("qlight_enabled")))
         self.qlight_host.setText((data.get("qlight_host") or "").strip())
         self.qlight_port.setValue(int(data.get("qlight_port") or 20000))
+        allowed_qr = data.get("allowed_qr_list") or []
+        if isinstance(allowed_qr, list):
+            self.allowed_qr_edit.setPlainText("\n".join(str(x).strip() for x in allowed_qr if x))
+        else:
+            self.allowed_qr_edit.setPlainText("")
         self._on_printer_toggled()
         self._on_qlight_toggled()
 
     def save_settings(self):
+        allowed_text = (self.allowed_qr_edit.toPlainText() or "").strip()
+        allowed_list = [s.strip() for s in allowed_text.split("\n") if s.strip()]
         payload = {
             "printer_enabled": self.printer_enabled.isChecked(),
             "printer_host": (self.printer_host.text() or "").strip(),
@@ -3225,6 +3244,7 @@ class SettingsScreen(QWidget):
             "qlight_enabled": self.qlight_enabled.isChecked(),
             "qlight_host": (self.qlight_host.text() or "").strip(),
             "qlight_port": self.qlight_port.value(),
+            "allowed_qr_list": allowed_list,
         }
         ok, result = self.api.put_device_settings(payload)
         if ok:

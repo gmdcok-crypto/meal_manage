@@ -235,7 +235,8 @@ const app = {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
-                }
+                },
+                body: JSON.stringify({ qr_data: qrData || '' })
             });
 
             const text = await res.text();
