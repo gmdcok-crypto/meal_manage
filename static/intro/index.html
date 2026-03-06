@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meal Auth System | 식당 식사 인증·관리 시스템</title>
+    <meta name="description" content="위탁 급식·사내 식당을 위한 직원 식사 인증, 실시간 집계, 식권 출력·경광등 연동 통합 솔루션">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="header-inner">
+            <a href="#" class="logo">Meal Auth System</a>
+            <nav class="nav">
+                <a href="#features">기능</a>
+                <a href="#flow">구성</a>
+                <a href="#contact">문의</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-inner">
+                <p class="hero-label">식당 식사 인증·관리 통합 솔루션</p>
+                <h1 class="hero-title">직원 식사 인증부터<br>집계·식권·경광등까지</h1>
+                <p class="hero-desc">위탁 급식·사내 식당 운영을 위한 PWA 기기 인증, PC 관리자 프로그램, 실시간 대시보드와 선택 연동(프린터·경광등)을 하나의 시스템으로 제공합니다.</p>
+                <div class="hero-cta">
+                    <a href="#features" class="btn btn-primary">기능 살펴보기</a>
+                    <a href="#contact" class="btn btn-ghost">문의하기</a>
+                </div>
+            </div>
+            <div class="hero-visual" aria-hidden="true">
+                <div class="hero-card hero-card-1">PWA 인증</div>
+                <div class="hero-card hero-card-2">PC 관리</div>
+                <div class="hero-card hero-card-3">실시간 집계</div>
+            </div>
+        </section>
+
+        <section id="features" class="section features">
+            <div class="container">
+                <p class="section-label">Features</p>
+                <h2 class="section-title">핵심 기능</h2>
+                <ul class="feature-grid">
+                    <li class="feature-card">
+                        <span class="feature-icon" aria-hidden="true">📱</span>
+                        <h3>직원 PWA</h3>
+                        <p>최초 1회 기기 인증 후, 현장 QR 스캔으로 식사 인증. 인증 완료 화면으로 배식 담당자에게 바로 확인 가능.</p>
+                    </li>
+                    <li class="feature-card">
+                        <span class="feature-icon" aria-hidden="true">🖥️</span>
+                        <h3>PC 관리자</h3>
+                        <p>회사·부서·사원 관리, 식사 정책, 당일·기간별 보고서, 공지사항, 식당관리자(위탁사) 계정 관리. 실시간 WebSocket 대시보드.</p>
+                    </li>
+                    <li class="feature-card">
+                        <span class="feature-icon" aria-hidden="true">📋</span>
+                        <h3>당일 식사인증 조회</h3>
+                        <p>식당관리자 전용 PWA. 사번·이름 검색으로 오늘(한국시간) 식사 인증 여부·시간·식사 종류를 즉시 조회.</p>
+                    </li>
+                    <li class="feature-card">
+                        <span class="feature-icon" aria-hidden="true">🖨️</span>
+                        <h3>식권 출력·경광등</h3>
+                        <p>네트워크 프린터(빅솔론 등)로 식권 자동 출력, Q라이트 경광등 연동으로 인증 시 시각·음향 알림(선택 구성).</p>
+                    </li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="flow" class="section flow">
+            <div class="container">
+                <p class="section-label">System</p>
+                <h2 class="section-title">시스템 구성</h2>
+                <div class="flow-diagram">
+                    <div class="flow-item">
+                        <span class="flow-num">1</span>
+                        <p>직원이 PWA에서 QR 스캔</p>
+                    </div>
+                    <span class="flow-arrow" aria-hidden="true">→</span>
+                    <div class="flow-item">
+                        <span class="flow-num">2</span>
+                        <p>백엔드에 식사 로그 저장</p>
+                    </div>
+                    <span class="flow-arrow" aria-hidden="true">→</span>
+                    <div class="flow-item">
+                        <span class="flow-num">3</span>
+                        <p>PC 대시보드·식권·경광등 연동</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="contact" class="section contact">
+            <div class="container">
+                <p class="section-label">Contact</p>
+                <h2 class="section-title">도입·문의</h2>
+                <p class="contact-desc">식당 식사 인증·관리 시스템 도입이 필요하시면 담당자에게 문의해 주세요.</p>
+                <div class="contact-box">
+                    <p><strong>담당자에게 문의 해주세요.</strong></p>
+                    <p class="contact-note">맞춤 배포, 고객사별 DB·URL 구성, 연동 지원 가능</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p class="footer-text">Meal Auth System · 식당 식사 인증·관리 시스템</p>
+        </div>
+    </footer>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+            a.addEventListener('click', function(e) {
+                var id = this.getAttribute('href');
+                if (id === '#') return;
+                e.preventDefault();
+                var el = document.querySelector(id);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+    </script>
+</body>
+</html>
