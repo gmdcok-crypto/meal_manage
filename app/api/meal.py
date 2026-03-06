@@ -87,27 +87,12 @@ async def process_qr_scan(
     log_time_kst = event_kst.time()
 
     # 식사 시간 범위 내에 있는 정책 검색 (로그에 저장될 시각 기준)
-    # 자정 넘김 구간 지원: end_time < start_time 이면 "당일 start_time ~ 다음날 end_time" (예: 야식 22:00~02:00)
     result = await db.execute(
         select(MealPolicy).where(
             and_(
                 MealPolicy.is_active == True,
-                or_(
-                    # 같은 날 구간: start_time <= log_time <= end_time
-                    and_(
-                        MealPolicy.start_time <= MealPolicy.end_time,
-                        MealPolicy.start_time <= log_time_kst,
-                        MealPolicy.end_time >= log_time_kst,
-                    ),
-                    # 자정 넘김 구간: log_time >= start_time OR log_time <= end_time
-                    and_(
-                        MealPolicy.start_time > MealPolicy.end_time,
-                        or_(
-                            MealPolicy.start_time <= log_time_kst,
-                            MealPolicy.end_time >= log_time_kst,
-                        ),
-                    ),
-                ),
+                MealPolicy.start_time <= log_time_kst,
+                MealPolicy.end_time >= log_time_kst
             )
         )
     )

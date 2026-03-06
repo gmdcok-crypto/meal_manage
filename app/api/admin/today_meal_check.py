@@ -1,9 +1,8 @@
 """당일(한국시간) 식사인증 조회 API. 관리자 폰 PWA용. 식당관리자 로그인 필수."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import joinedload
-from datetime import timedelta
 from app.core.database import get_db
 from app.models.models import MealLog, User, MealPolicy, CafeteriaAdmin
 from app.core.time_utils import kst_today, kst_date_range_to_naive
@@ -19,11 +18,8 @@ async def today_meal_check(
     db: AsyncSession = Depends(get_db),
     admin: CafeteriaAdmin = Depends(get_current_admin)
 ):
-    """한국시간 오늘 기준, 사원이름 또는 사번으로 식사인증 조회. 시간·식사종류 반환.
-    자정 넘김(야식): 다음날 00:00~end_time 포함. 당일 00~02시도 인증한 날에 보이도록 포함."""
+    """한국시간 오늘 기준, 사원이름 또는 사번으로 식사인증 조회. 시간·식사종류 반환."""
     start_naive, end_naive = kst_date_range_to_naive(kst_today(), kst_today())
-    today_date = kst_today()
-    next_day = today_date + timedelta(days=1)
 
     query = (
         select(MealLog)
@@ -31,20 +27,9 @@ async def today_meal_check(
         .outerjoin(MealPolicy, MealLog.policy_id == MealPolicy.id)
         .where(
             and_(
-                or_(
-                    # 같은 날 구간 (당일 전부, 야식 00~02시 포함)
-                    and_(
-                        MealLog.created_at >= start_naive,
-                        MealLog.created_at < end_naive,
-                    ),
-                    # 자정 넘김: 다음날 00:00~end_time → 당일로 포함
-                    and_(
-                        MealPolicy.start_time > MealPolicy.end_time,
-                        func.date(MealLog.created_at) == next_day,
-                        func.time(MealLog.created_at) <= MealPolicy.end_time,
-                    ),
-                ),
-                MealLog.is_void == False,
+                MealLog.created_at >= start_naive,
+                MealLog.created_at < end_naive,
+                MealLog.is_void == False
             )
         )
     )
