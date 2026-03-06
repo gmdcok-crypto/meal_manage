@@ -20,7 +20,7 @@ async def today_meal_check(
     admin: CafeteriaAdmin = Depends(get_current_admin)
 ):
     """한국시간 오늘 기준, 사원이름 또는 사번으로 식사인증 조회. 시간·식사종류 반환.
-    자정 넘김 정책(예: 야식 22~02시)은 다음날 00:00~end_time 로그를 당일에 포함."""
+    자정 넘김 정책(야식): 당일 새벽 00~02시는 전날에만 포함, 당일 야식은 당일 22시~다음날 02시만 포함."""
     start_naive, end_naive = kst_date_range_to_naive(kst_today(), kst_today())
     today_date = kst_today()
     next_day = today_date + timedelta(days=1)
@@ -32,12 +32,18 @@ async def today_meal_check(
         .where(
             and_(
                 or_(
-                    # 같은 날 구간
+                    # 같은 날 구간 단, 자정 넘김 정책의 당일 새벽(00~end_time)은 제외 → 전날에만 포함
                     and_(
                         MealLog.created_at >= start_naive,
                         MealLog.created_at < end_naive,
+                        or_(
+                            MealPolicy.id.is_(None),
+                            MealPolicy.start_time <= MealPolicy.end_time,
+                            func.date(MealLog.created_at) != today_date,
+                            func.time(MealLog.created_at) > MealPolicy.end_time,
+                        ),
                     ),
-                    # 자정 넘김 정책: 다음날 00:00 ~ end_time → 당일로 포함
+                    # 자정 넘김 정책: 다음날 00:00 ~ end_time → 당일(오늘 밤) 야식으로 포함
                     and_(
                         MealPolicy.start_time > MealPolicy.end_time,
                         func.date(MealLog.created_at) == next_day,

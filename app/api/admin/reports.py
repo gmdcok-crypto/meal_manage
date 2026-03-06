@@ -16,7 +16,7 @@ async def get_daily_report(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    """일별 식사 집계. 자정 넘김 정책(야식)은 다음날 00:00~end_time 로그를 해당 target_date로 포함."""
+    """일별 식사 집계. 자정 넘김(야식): 해당일 새벽 00~02시는 전날로, 해당일 야식은 해당일 22시~다음날 02시만 집계."""
     start_naive, end_naive = kst_date_range_to_naive(target_date, target_date)
     next_day = target_date + timedelta(days=1)
     query = select(
@@ -30,6 +30,11 @@ async def get_daily_report(
             and_(
                 MealLog.created_at >= start_naive,
                 MealLog.created_at < end_naive,
+                or_(
+                    MealPolicy.start_time <= MealPolicy.end_time,
+                    func.date(MealLog.created_at) != target_date,
+                    func.time(MealLog.created_at) > MealPolicy.end_time,
+                ),
             ),
             and_(
                 MealPolicy.start_time > MealPolicy.end_time,

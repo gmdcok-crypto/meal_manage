@@ -30,7 +30,7 @@ async def get_today_stats(
     policies = policy_result.scalars().all()
     
     # Get all logs for today (created_at은 KST naive로 저장됨)
-    # 자정 넘김 정책(야식 등): 다음날 00:00~end_time 로그도 당일로 포함
+    # 자정 넘김(야식): 당일 새벽 00~02시는 전날에만 포함, 당일 야식은 당일 22시~다음날 02시만 포함
     start_naive, end_naive = kst_date_range_naive()
     next_day = today + timedelta(days=1)
     log_query = select(MealLog).outerjoin(MealPolicy, MealLog.policy_id == MealPolicy.id).where(
@@ -38,6 +38,12 @@ async def get_today_stats(
             and_(
                 MealLog.created_at >= start_naive,
                 MealLog.created_at < end_naive,
+                or_(
+                    MealPolicy.id.is_(None),
+                    MealPolicy.start_time <= MealPolicy.end_time,
+                    func.date(MealLog.created_at) != today,
+                    func.time(MealLog.created_at) > MealPolicy.end_time,
+                ),
             ),
             and_(
                 MealPolicy.start_time > MealPolicy.end_time,
