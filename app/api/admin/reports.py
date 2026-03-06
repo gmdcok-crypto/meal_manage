@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from app.core.database import get_db
 from app.api.auth import get_current_admin
 from app.models.models import MealLog, User, MealPolicy, Department
@@ -16,16 +16,27 @@ async def get_daily_report(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
+    """일별 식사 집계. 자정 넘김(야식): 다음날 00:00~end_time 포함. 당일 00~02시도 해당일 포함."""
     start_naive, end_naive = kst_date_range_to_naive(target_date, target_date)
+    next_day = target_date + timedelta(days=1)
     query = select(
         MealPolicy.meal_type,
         func.count(MealLog.id).label("employee_count"),
         func.sum(MealLog.guest_count).label("guest_count")
     ).join(MealLog, MealPolicy.id == MealLog.policy_id)\
      .where(and_(
-        MealLog.created_at >= start_naive,
-        MealLog.created_at < end_naive,
-        MealLog.is_void == False
+        MealLog.is_void == False,
+        or_(
+            and_(
+                MealLog.created_at >= start_naive,
+                MealLog.created_at < end_naive,
+            ),
+            and_(
+                MealPolicy.start_time > MealPolicy.end_time,
+                func.date(MealLog.created_at) == next_day,
+                func.time(MealLog.created_at) <= MealPolicy.end_time,
+            ),
+        ),
     ))\
      .group_by(MealPolicy.meal_type)
 
