@@ -34,21 +34,25 @@ async def get_today_stats(
     start_naive, end_naive = kst_date_range_naive()
     next_day = today + timedelta(days=1)
     log_query = select(MealLog).outerjoin(MealPolicy, MealLog.policy_id == MealPolicy.id).where(
-        or_(
-            and_(
-                MealLog.created_at >= start_naive,
-                MealLog.created_at < end_naive,
-                or_(
-                    MealPolicy.id.is_(None),
-                    MealPolicy.start_time <= MealPolicy.end_time,
-                    func.date(MealLog.created_at) != today,
-                    func.time(MealLog.created_at) > MealPolicy.end_time,
+        and_(
+            MealLog.is_void == False,
+            or_(
+                and_(
+                    MealLog.created_at >= start_naive,
+                    MealLog.created_at < end_naive,
+                    or_(
+                        MealPolicy.id.is_(None),
+                        MealPolicy.start_time <= MealPolicy.end_time,
+                        func.date(MealLog.created_at) != today,
+                        # 자정 넘김 같은 날: 22시~24시 포함 (time >= start_time)
+                        func.time(MealLog.created_at) >= MealPolicy.start_time,
+                    ),
                 ),
-            ),
-            and_(
-                MealPolicy.start_time > MealPolicy.end_time,
-                func.date(MealLog.created_at) == next_day,
-                func.time(MealLog.created_at) <= MealPolicy.end_time,
+                and_(
+                    MealPolicy.start_time > MealPolicy.end_time,
+                    func.date(MealLog.created_at) == next_day,
+                    func.time(MealLog.created_at) <= MealPolicy.end_time,
+                ),
             ),
         )
     )

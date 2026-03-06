@@ -33,7 +33,8 @@ async def get_daily_report(
                 or_(
                     MealPolicy.start_time <= MealPolicy.end_time,
                     func.date(MealLog.created_at) != target_date,
-                    func.time(MealLog.created_at) > MealPolicy.end_time,
+                    # 자정 넘김 같은 날: 22시~24시 포함 (time >= start_time)
+                    func.time(MealLog.created_at) >= MealPolicy.start_time,
                 ),
             ),
             and_(

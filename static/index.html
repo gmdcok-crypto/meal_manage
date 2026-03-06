@@ -137,6 +137,10 @@
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js?v=1');
         }
+        // Chrome 기본 설치 창 억제: 닫기 시 PWA가 닫히는 현상 방지 (홈 화면 추가는 브라우저 메뉴에서)
+        window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault();
+        });
     </script>
 </body>
 

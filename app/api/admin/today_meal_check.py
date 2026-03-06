@@ -40,7 +40,8 @@ async def today_meal_check(
                             MealPolicy.id.is_(None),
                             MealPolicy.start_time <= MealPolicy.end_time,
                             func.date(MealLog.created_at) != today_date,
-                            func.time(MealLog.created_at) > MealPolicy.end_time,
+                            # 자정 넘김 같은 날: 22시~24시 포함 (time >= start_time)
+                            func.time(MealLog.created_at) >= MealPolicy.start_time,
                         ),
                     ),
                     # 자정 넘김 정책: 다음날 00:00 ~ end_time → 당일(오늘 밤) 야식으로 포함
