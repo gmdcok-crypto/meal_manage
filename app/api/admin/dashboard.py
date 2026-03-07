@@ -66,12 +66,11 @@ async def get_today_stats(
     # Policy summary breakdown
     meal_summaries = []
     for policy in policies:
-        # Sum logs for this specific policy
         policy_logs = [log for log in valid_logs if log.policy_id == policy.id]
         count = sum(1 + log.guest_count for log in policy_logs)
         meal_summaries.append({
-            "meal_type": policy.meal_type, 
-            "count": count, 
+            "meal_type": policy.meal_type,
+            "count": count,
             "price": policy.base_price
         })
     
