@@ -1,13 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.api.auth import get_current_admin
 from app.models.models import MealLog, MealPolicy, User
 from app.schemas.schemas import DashboardStats
 from app.core.time_utils import kst_now, kst_today, kst_date_range_naive
 from datetime import date, datetime, timedelta
-from typing import List
 
 router = APIRouter(tags=["dashboard"])
 
@@ -30,25 +29,12 @@ async def get_today_stats(
     policies = policy_result.scalars().all()
     
     # Get all logs for today (created_at은 KST naive로 저장됨)
-    # 자정 넘김(야식): 다음날 00:00~end_time도 당일에 포함. 당일 00~02시 야식도 인증한 날에 보이도록 포함
     start_naive, end_naive = kst_date_range_naive()
-    next_day = today + timedelta(days=1)
     log_query = select(MealLog).outerjoin(MealPolicy, MealLog.policy_id == MealPolicy.id).where(
         and_(
             MealLog.is_void == False,
-            or_(
-                # 같은 날 구간 (당일 00:00~24:00 전부, 야식 00~02시 포함)
-                and_(
-                    MealLog.created_at >= start_naive,
-                    MealLog.created_at < end_naive,
-                ),
-                # 자정 넘김: 다음날 00:00~end_time → 당일(오늘 밤) 야식으로 포함
-                and_(
-                    MealPolicy.start_time > MealPolicy.end_time,
-                    func.date(MealLog.created_at) == next_day,
-                    func.time(MealLog.created_at) <= MealPolicy.end_time,
-                ),
-            ),
+            MealLog.created_at >= start_naive,
+            MealLog.created_at < end_naive,
         )
     )
     log_result = await db.execute(log_query)
