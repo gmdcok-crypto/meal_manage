@@ -10,6 +10,19 @@ from datetime import date, datetime, timedelta
 
 router = APIRouter(tags=["dashboard"])
 
+
+def _policy_display_order_key(policy):
+    """자정 넘김(야식)은 심야(22시)가 새벽(00시)보다 먼저 오도록 정렬 키 반환."""
+    s, e = policy.start_time, policy.end_time
+    if s is None:
+        return (0, 0)
+    sec = s.hour * 3600 + s.minute * 60 + s.second
+    if e is not None and s > e:
+        # 자정 넘김: 22:00을 00:00보다 앞에 (24*3600 - sec 사용)
+        return (1, 24 * 3600 - sec)
+    return (0, sec)
+
+
 @router.get("/today", response_model=DashboardStats)
 async def get_today_stats(
     db: AsyncSession = Depends(get_db),
@@ -23,10 +36,10 @@ async def get_today_stats(
     elif hour < 16: meal_type_key = "lunch"
     else: meal_type_key = "dinner"
     
-    # Get all active policies for breakdown
+    # Get all active policies for breakdown (정렬: 일반 식사 순서, 자정 넘김은 심야→새벽)
     policy_query = select(MealPolicy).where(MealPolicy.is_active == True).order_by(MealPolicy.start_time)
     policy_result = await db.execute(policy_query)
-    policies = policy_result.scalars().all()
+    policies = sorted(policy_result.scalars().all(), key=_policy_display_order_key)
     
     # Get all logs for today (created_at은 KST naive로 저장됨)
     start_naive, end_naive = kst_date_range_naive()

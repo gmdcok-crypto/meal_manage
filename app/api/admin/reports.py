@@ -10,6 +10,10 @@ from typing import List, Optional
 
 router = APIRouter(tags=["reports"])
 
+# 식사 종류 표시 순서 (야식(심야) → 야식(새벽))
+MEAL_TYPE_DISPLAY_ORDER = ("조식", "중식", "석식", "야식(심야)", "야식(새벽)")
+
+
 @router.get("/daily")
 async def get_daily_report(
     target_date: date,
@@ -31,7 +35,11 @@ async def get_daily_report(
      .group_by(MealPolicy.meal_type)
 
     result = await db.execute(query)
-    return [dict(row._asdict()) for row in result.all()]
+    rows = [dict(row._asdict()) for row in result.all()]
+    # 표시 순서: 조식 → 중식 → 석식 → 야식(심야) → 야식(새벽) → 기타
+    order_map = {t: i for i, t in enumerate(MEAL_TYPE_DISPLAY_ORDER)}
+    rows.sort(key=lambda r: (order_map.get(r.get("meal_type"), 999), r.get("meal_type", "")))
+    return rows
 
 @router.get("/monthly")
 async def get_monthly_report(

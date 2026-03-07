@@ -1890,19 +1890,15 @@ class RawDataScreen(QWidget):
         panel_title.setStyleSheet("font-size: 22px; font-weight: bold; color: #6366f1; margin-bottom: 10px;")
         input_layout.addWidget(panel_title)
         
-        # Date & Time
+        # 날짜만 선택 (시간은 식사 종류에 따라 자동 적용)
         date_label = QLabel("날짜")
         date_label.setObjectName("InputLabel")
         self.edit_date = QDateEdit()
         self.edit_date.setCalendarPopup(True)
         self.edit_date.setDate(QDate.currentDate())
         self.edit_date.setFixedHeight(40)
-        
-        time_label = QLabel("시간")
-        time_label.setObjectName("InputLabel")
-        self.edit_time = QTimeEdit()
-        self.edit_time.setTime(QTime.currentTime())
-        self.edit_time.setFixedHeight(40)
+        date_hint = QLabel("※ 시간은 선택한 식사 종류에 따라 자동 적용됩니다.")
+        date_hint.setStyleSheet("color: #94a3b8; font-size: 12px; margin-bottom: 4px;")
         
         # Employee Search
         emp_label = QLabel("사원 검색 (이름)")
@@ -1942,7 +1938,7 @@ class RawDataScreen(QWidget):
         # Add to input layout
         for label, widget in [
             (emp_label, None), (None, search_h), (None, self.selected_emp_label),
-            (date_label, self.edit_date), (time_label, self.edit_time),
+            (date_label, self.edit_date), (None, date_hint),
             (policy_label, self.policy_combo), (guest_label, self.edit_guest)
         ]:
             if label: input_layout.addWidget(label)
@@ -2048,16 +2044,21 @@ class RawDataScreen(QWidget):
             self.policy_combo.addItem(p["meal_type"], p["id"])
 
     def on_policy_changed(self, idx):
-        if idx <= 0: return
-        policy_id = self.policy_combo.currentData()
+        pass  # 시간은 등록/수정 시 식사 종류 기준으로 자동 적용
+
+    def _created_at_time_from_policy(self, policy_id):
+        """선택한 식사 종류의 시작 시간 + 5분을 HH:mm:ss 로 반환. 없으면 12:00:00."""
+        if not policy_id:
+            return "12:00:00"
         policy = next((p for p in self.policies_list if p["id"] == policy_id), None)
-        if policy and policy.get("start_time"):
-            # Set time to start_time + 5 minutes
-            try:
-                h, m = map(int, policy["start_time"].split(":")[:2])
-                qtime = QTime(h, m).addSecs(300) # 5 mins
-                self.edit_time.setTime(qtime)
-            except: pass
+        if not policy or not policy.get("start_time"):
+            return "12:00:00"
+        try:
+            h, m = map(int, policy["start_time"].split(":")[:2])
+            qtime = QTime(h, m).addSecs(300)
+            return qtime.toString("HH:mm:ss")
+        except Exception:
+            return "12:00:00"
 
     def get_meal_type_by_time(self, time_str):
         if not time_str: return "번외"
@@ -2119,7 +2120,6 @@ class RawDataScreen(QWidget):
         # Fill inputs
         dt = datetime.fromisoformat(log["created_at"].replace("Z", ""))
         self.edit_date.setDate(QDate(dt.year, dt.month, dt.day))
-        self.edit_time.setTime(QTime(dt.hour, dt.minute, dt.second))
         
         self.selected_user_id = log["user_id"]
         self.selected_emp_label.setText(f"선택됨: {log['user']['name']} ({log['user']['emp_no']})")
@@ -2139,7 +2139,6 @@ class RawDataScreen(QWidget):
 
     def clear_inputs(self):
         self.edit_date.setDate(QDate.currentDate())
-        self.edit_time.setTime(QTime.currentTime())
         self.emp_search_input.clear()
         self.selected_user_id = None
         self.selected_emp_label.setText("선택된 사원: 없음")
@@ -2159,8 +2158,8 @@ class RawDataScreen(QWidget):
         if not policy_id:
             QMessageBox.warning(self, "경고", "식사 종류를 선택하세요.")
             return
-            
-        dt_str = f"{self.edit_date.date().toString('yyyy-MM-dd')}T{self.edit_time.time().toString('HH:mm:ss')}"
+        time_str = self._created_at_time_from_policy(policy_id)
+        dt_str = f"{self.edit_date.date().toString('yyyy-MM-dd')}T{time_str}"
         data = {
             "user_id": self.selected_user_id,
             "policy_id": policy_id,
@@ -2175,7 +2174,8 @@ class RawDataScreen(QWidget):
     def on_update(self):
         if not self.current_log_id: return
         policy_id = self.policy_combo.currentData()
-        dt_str = f"{self.edit_date.date().toString('yyyy-MM-dd')}T{self.edit_time.time().toString('HH:mm:ss')}"
+        time_str = self._created_at_time_from_policy(policy_id)
+        dt_str = f"{self.edit_date.date().toString('yyyy-MM-dd')}T{time_str}"
         data = {
             "user_id": self.selected_user_id,
             "policy_id": policy_id,
@@ -2519,7 +2519,8 @@ class ReportScreen(QWidget):
         
         self.start_date_edit = QDateEdit()
         self.start_date_edit.setCalendarPopup(True)
-        self.start_date_edit.setDate(QDate.currentDate().addDays(-7))
+        today = QDate.currentDate()
+        self.start_date_edit.setDate(QDate(today.year(), today.month(), 1))
         self.start_date_edit.setFixedWidth(180)
         
         tilde = QLabel("~")
@@ -2899,7 +2900,7 @@ class NoticeScreen(QWidget):
         hint.setObjectName("NoticeHint")
         hint.setWordWrap(True)
         hint.setContentsMargins(0, 0, 0, 0)
-        hint.setStyleSheet("color: #94a3b8; font-size: 16px; font-weight: bold;")
+        hint.setStyleSheet("color: #94a3b8; font-size: 17px; font-weight: bold; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
         block_layout.addWidget(hint)
 
         block_layout.addSpacing(4)
@@ -2907,7 +2908,7 @@ class NoticeScreen(QWidget):
         self.text_edit.setPlaceholderText("공지 내용을 입력하세요...")
         self.text_edit.setFixedSize(400, 200)
         self.text_edit.setStyleSheet("""
-            QPlainTextEdit { background-color: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 8px; padding: 12px 12px 2px 12px; font-size: 17px; }
+            QPlainTextEdit { background-color: #1e293b; color: #f1f5f9; border: 1px solid #475569; border-radius: 8px; padding: 12px 12px 2px 12px; font-size: 19px; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; font-weight: bold; }
         """)
         block_layout.addWidget(self.text_edit, 0, Qt.AlignLeft)
         block_layout.addSpacing(2)
@@ -3143,7 +3144,7 @@ class SettingsScreen(QWidget):
         printer_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
         printer_layout = QFormLayout(printer_group)
         self.printer_enabled = QCheckBox("프린터 사용")
-        self.printer_enabled.setStyleSheet("color: #f8fafc;")
+        self.printer_enabled.setStyleSheet("color: #f8fafc; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; font-weight: bold;")
         self.printer_enabled.stateChanged.connect(self._on_printer_toggled)
         printer_layout.addRow(self.printer_enabled)
         self.printer_host = QLineEdit()
@@ -3154,6 +3155,7 @@ class SettingsScreen(QWidget):
         self.printer_port.setRange(1, 65535)
         self.printer_port.setValue(9100)
         self.printer_port.setMinimumHeight(40)
+        self.printer_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 19px; font-weight: bold; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
         printer_layout.addRow("포트:", self.printer_port)
         layout.addWidget(printer_group)
 
@@ -3162,7 +3164,7 @@ class SettingsScreen(QWidget):
         qlight_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
         qlight_layout = QFormLayout(qlight_group)
         self.qlight_enabled = QCheckBox("경광등 사용")
-        self.qlight_enabled.setStyleSheet("color: #f8fafc;")
+        self.qlight_enabled.setStyleSheet("color: #f8fafc; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; font-weight: bold;")
         self.qlight_enabled.stateChanged.connect(self._on_qlight_toggled)
         qlight_layout.addRow(self.qlight_enabled)
         self.qlight_host = QLineEdit()
@@ -3173,6 +3175,7 @@ class SettingsScreen(QWidget):
         self.qlight_port.setRange(1, 65535)
         self.qlight_port.setValue(20000)
         self.qlight_port.setMinimumHeight(40)
+        self.qlight_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 19px; font-weight: bold; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
         qlight_layout.addRow("포트:", self.qlight_port)
         layout.addWidget(qlight_group)
 
@@ -3184,7 +3187,7 @@ class SettingsScreen(QWidget):
         self.allowed_qr_edit.setPlaceholderText("한 줄에 QR 내용 하나씩 입력. 비우면 아무 QR나 인증됩니다.")
         self.allowed_qr_edit.setMinimumHeight(100)
         self.allowed_qr_edit.setLineWrapMode(QPlainTextEdit.NoWrap)  # 긴 코드가 줄바꿈되어 일부만 복사되는 것 방지
-        self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 14px;")
+        self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 19px; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
         qr_layout.addWidget(self.allowed_qr_edit)
         layout.addWidget(qr_group)
 
