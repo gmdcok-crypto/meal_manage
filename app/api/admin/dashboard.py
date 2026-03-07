@@ -10,17 +10,14 @@ from datetime import date, datetime, timedelta
 
 router = APIRouter(tags=["dashboard"])
 
+# 식사 종류 표시 순서 (야식(심야) → 야식(새벽), 심야/새벽 분리 정책도 동일 적용)
+MEAL_TYPE_DISPLAY_ORDER = ("조식", "중식", "석식", "야식(심야)", "야식(새벽)")
+
 
 def _policy_display_order_key(policy):
-    """자정 넘김(야식)은 심야(22시)가 새벽(00시)보다 먼저 오도록 정렬 키 반환."""
-    s, e = policy.start_time, policy.end_time
-    if s is None:
-        return (0, 0)
-    sec = s.hour * 3600 + s.minute * 60 + s.second
-    if e is not None and s > e:
-        # 자정 넘김: 22:00을 00:00보다 앞에 (24*3600 - sec 사용)
-        return (1, 24 * 3600 - sec)
-    return (0, sec)
+    """meal_type 기준 고정 표시 순서. 목록에 없으면 뒤로."""
+    order_map = {t: i for i, t in enumerate(MEAL_TYPE_DISPLAY_ORDER)}
+    return (order_map.get(policy.meal_type, 999), policy.meal_type or "")
 
 
 @router.get("/today", response_model=DashboardStats)
