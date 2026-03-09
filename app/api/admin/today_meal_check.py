@@ -1,7 +1,7 @@
 """당일(한국시간) 식사인증 조회 API. 관리자 폰 PWA용. 식당관리자 로그인 필수."""
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
 from app.core.database import get_db
