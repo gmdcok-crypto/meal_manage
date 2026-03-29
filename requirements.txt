@@ -1,7 +1,7 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
-mariadb
+PyMySQL
 pydantic-settings
 python-jose[cryptography]
 passlib[bcrypt]

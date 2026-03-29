@@ -1,4 +1,4 @@
-"""DB 생성·스키마 보강 (MariaDB 공식 Connector / 동기 SQLAlchemy)."""
+"""DB 생성·스키마 보강 (동기 SQLAlchemy, MariaDB/MySQL 호환)."""
 from sqlalchemy import text, create_engine, select
 from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
