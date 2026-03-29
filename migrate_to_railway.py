@@ -3,9 +3,9 @@
 
 사용법:
   1. Railway MySQL 연결 정보를 환경변수에 설정:
-     set RAILWAY_DATABASE_URL=mariadb+pymysql://사용자:비밀번호@호스트:3306/railway
+     set RAILWAY_DATABASE_URL=mysql+pymysql://사용자:비밀번호@호스트:3306/railway
   2. 로컬 DB는 기본값(app/core/config.py) 또는:
-     set LOCAL_DATABASE_URL=mariadb+pymysql://root:비밀번호@localhost:3306/meal_db
+     set LOCAL_DATABASE_URL=mysql+pymysql://root:비밀번호@localhost:3306/meal_db
   3. Railway 쪽에 테이블이 있어야 함 (없으면 먼저 repair_db.py를 RAILWAY_DATABASE_URL로 실행)
   4. 실행:
      python migrate_to_railway.py
@@ -13,11 +13,11 @@
 import os
 from sqlalchemy import text, create_engine
 
-LOCAL_URL = os.environ.get("LOCAL_DATABASE_URL") or "mariadb+pymysql://root:700312ok!@localhost:3306/meal_db"
+LOCAL_URL = os.environ.get("LOCAL_DATABASE_URL") or "mysql+pymysql://root:700312ok!@localhost:3306/meal_db"
 RAILWAY_URL = os.environ.get("RAILWAY_DATABASE_URL")
 if not RAILWAY_URL:
     print("오류: RAILWAY_DATABASE_URL 환경변수를 설정하세요.")
-    print("예: set RAILWAY_DATABASE_URL=mariadb+pymysql://user:pass@host:3306/railway")
+    print("예: set RAILWAY_DATABASE_URL=mysql+pymysql://user:pass@host:3306/railway")
     exit(1)
 
 TABLES = ["companies", "departments", "employees", "meal_policies", "meal_logs", "audit_logs"]

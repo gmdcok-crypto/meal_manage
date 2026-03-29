@@ -2,25 +2,27 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 
 def _normalize_database_url(url: str) -> str:
-    """공백/줄바꿈 제거. 모든 MySQL/MariaDB URL → mariadb+pymysql:// (순수 Python, Railway/Nixpacks 빌드용).
+    """공백/줄바꿈 제거. PyMySQL URL → mysql+pymysql:// 로 통일 (순수 Python, Railway 빌드용).
 
-    PyPI `mariadb`(Connector/C) 패키지는 mariadb_config 등 네이티브 빌드가 필요해 Nixpacks 기본 이미지에서 실패함.
-    PyMySQL은 MariaDB 서버와 호환되며 휠만으로 설치됨.
+    SQLAlchemy `mariadb+pymysql` 방언은 서버가 MariaDB 계열인지 검사하는데, MySQL 8/9(예: 9.4.0)이면
+    \"MySQL version … is not a MariaDB variant\" 로 연결이 실패할 수 있음.
+    `mysql+pymysql` 은 MySQL·MariaDB 서버 모두에 동일하게 사용 가능.
     """
     u = (url or "").strip().split("\n")[0].strip()
     if u.startswith("mysql://") and "+" not in u.split("://", 1)[0]:
-        u = "mariadb+pymysql://" + u[len("mysql://") :]
+        u = "mysql+pymysql://" + u[len("mysql://") :]
     elif u.startswith("mysql+aiomysql://"):
-        u = "mariadb+pymysql://" + u[len("mysql+aiomysql://") :]
-    elif u.startswith("mysql+pymysql://"):
-        u = "mariadb+pymysql://" + u[len("mysql+pymysql://") :]
+        u = "mysql+pymysql://" + u[len("mysql+aiomysql://") :]
     elif u.startswith("mysql+asyncmy://"):
-        u = "mariadb+pymysql://" + u[len("mysql+asyncmy://") :]
+        u = "mysql+pymysql://" + u[len("mysql+asyncmy://") :]
     elif u.startswith("mariadb+mariadbconnector://"):
-        u = "mariadb+pymysql://" + u[len("mariadb+mariadbconnector://") :]
+        u = "mysql+pymysql://" + u[len("mariadb+mariadbconnector://") :]
+    elif u.startswith("mariadb+pymysql://"):
+        u = "mysql+pymysql://" + u[len("mariadb+pymysql://") :]
+    # 이미 mysql+pymysql:// 이면 그대로
     return u
 
-_DEFAULT_DATABASE_URL = "mariadb+pymysql://root:700312ok!@localhost:3306/meal_db"
+_DEFAULT_DATABASE_URL = "mysql+pymysql://root:700312ok!@localhost:3306/meal_db"
 _DEFAULT_SECRET_KEY = "your-secret-key-change-it-in-production"
 
 class Settings(BaseSettings):
