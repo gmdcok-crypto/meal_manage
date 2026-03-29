@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from app.api.admin import (
     employees, dashboard, raw_data, policies, reports,
-    companies, departments, ws, notice, today_meal_check, admins, settings as admin_settings
+    companies, departments, ws, notice, today_meal_check, admins, settings as admin_settings,
+    terminals,
 )
 
 router = APIRouter()
@@ -10,6 +11,7 @@ router.include_router(notice.router, tags=["Admin Notice"])
 router.include_router(today_meal_check.router, tags=["Admin Today Meal Check"])
 router.include_router(admins.router, prefix="/admins", tags=["Admin Admins"])
 router.include_router(admin_settings.router, prefix="/settings", tags=["Admin Settings"])
+router.include_router(terminals.router, prefix="/terminals", tags=["Admin QR Terminals"])
 router.include_router(employees.router, prefix="/employees", tags=["Admin Employees"])
 router.include_router(dashboard.router, prefix="/stats", tags=["Admin Dashboard"])
 router.include_router(raw_data.router, prefix="/raw-data", tags=["Admin Raw Data"])

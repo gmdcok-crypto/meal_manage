@@ -67,6 +67,38 @@ async def repair():
         except Exception as e:
             print(f"Note: system_settings: {e}")
 
+        # 3-3. QR 터미널 (구역별 프린터·경광등)
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS meal_qr_terminals (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    name VARCHAR(100) DEFAULT '',
+                    qr_code VARCHAR(512) NOT NULL,
+                    printer_enabled TINYINT(1) DEFAULT 0,
+                    printer_host VARCHAR(100) DEFAULT '',
+                    printer_port INT DEFAULT 9100,
+                    printer_stored_image_number INT DEFAULT 1,
+                    qlight_enabled TINYINT(1) DEFAULT 0,
+                    qlight_host VARCHAR(100) DEFAULT '',
+                    qlight_port INT DEFAULT 20000,
+                    is_active TINYINT(1) DEFAULT 1,
+                    sort_order INT DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uq_meal_qr_terminals_qr (qr_code)
+                )
+            """))
+            print("Ensured 'meal_qr_terminals' table.")
+        except Exception as e:
+            print(f"Note: meal_qr_terminals: {e}")
+
+        try:
+            await conn.execute(text(
+                "ALTER TABLE meal_logs ADD COLUMN qr_terminal_id INT NULL"
+            ))
+            print("Ensured 'qr_terminal_id' column in meal_logs")
+        except Exception:
+            pass
+
         # 4. Check and add/remove columns for data consistency
         # Add 'code' to companies if missing
         try:
@@ -121,6 +153,7 @@ async def repair():
             ("meal_logs", "user_id", "employees", "CASCADE"),
             ("meal_logs", "policy_id", "meal_policies", "CASCADE"),
             ("meal_logs", "void_operator_id", "employees", "SET NULL"),
+            ("meal_logs", "qr_terminal_id", "meal_qr_terminals", "SET NULL"),
             ("audit_logs", "operator_id", "employees", "SET NULL")
         ]
 

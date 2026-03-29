@@ -78,6 +78,24 @@ class MealPolicy(Base):
     company = relationship("Company", back_populates="policies")
 
 
+class MealQrTerminal(Base):
+    """QR 스캔 구역별 프린터·경광등 매핑 (한 줄 = QR1 + 1번 프린터 + 1번 경광등)."""
+    __tablename__ = "meal_qr_terminals"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), default="")  # 표시용 (예: 1번 구역)
+    qr_code = Column(String(512), unique=True, nullable=False, index=True)  # 스캔된 문자열과 정확히 일치
+    printer_enabled = Column(Boolean, default=False)
+    printer_host = Column(String(100), default="")
+    printer_port = Column(Integer, default=9100)
+    printer_stored_image_number = Column(Integer, default=1)
+    qlight_enabled = Column(Boolean, default=False)
+    qlight_host = Column(String(100), default="")
+    qlight_port = Column(Integer, default=20000)
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class MealLog(Base):
     __tablename__ = "meal_logs"
     id = Column(Integer, primary_key=True, index=True)
@@ -85,8 +103,9 @@ class MealLog(Base):
     policy_id = Column(Integer, ForeignKey("meal_policies.id", ondelete="CASCADE"))
     guest_count = Column(Integer, default=0)
     status = Column(String(20)) # ARRIVED, SERVED
-    
+
     path = Column(String(20), default="PWA") # PWA, MANUAL, QR
+    qr_terminal_id = Column(Integer, ForeignKey("meal_qr_terminals.id", ondelete="SET NULL"), nullable=True)
     final_price = Column(Integer, default=0) # Price snapshot at creation
     
     is_void = Column(Boolean, default=False)

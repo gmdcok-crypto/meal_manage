@@ -65,22 +65,45 @@ async def process_qr_scan(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    # 허용 QR 목록이 있으면, 스캔한 QR이 목록에 있을 때만 인증
+    def _norm_qr(s):
+        if s is None or not isinstance(s, str):
+            return ""
+        return s.strip().replace("\ufeff", "").replace("\r", "").replace("\n", "").strip()
+
     from app.api.admin.settings import get_device_settings_from_db
-    device = await get_device_settings_from_db(db)
-    allowed = device.get("allowed_qr_list") or []
-    if isinstance(allowed, list) and len(allowed) > 0:
-        def _norm(s):
-            if s is None or not isinstance(s, str):
-                return ""
-            return s.strip().replace("\ufeff", "").replace("\r", "").replace("\n", "").strip()
-        qr_val = _norm(body.qr_data)
+    from app.api.admin.terminals import (
+        count_terminals,
+        find_terminal_by_qr,
+        legacy_device_payload_from_settings,
+        terminal_to_device_payload,
+    )
+
+    qr_val = _norm_qr(body.qr_data)
+    n_terminals = await count_terminals(db)
+    qr_terminal_id = None
+    device_payload = None
+
+    if n_terminals > 0:
+        # 터미널이 하나라도 있으면: 스캔 문자열이 등록된 qr_code와 정확히 일치해야 함
         if not qr_val:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QR 코드를 스캔해 주세요.")
-        allowed_set = {_norm(s) for s in allowed if s is not None}
-        allowed_set.discard("")
-        if qr_val not in allowed_set:
+        terminal = await find_terminal_by_qr(db, qr_val)
+        if not terminal:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
+        qr_terminal_id = terminal.id
+        device_payload = terminal_to_device_payload(terminal)
+    else:
+        # 레거시: system_settings 의 allowed_qr_list
+        device = await get_device_settings_from_db(db)
+        allowed = device.get("allowed_qr_list") or []
+        if isinstance(allowed, list) and len(allowed) > 0:
+            if not qr_val:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QR 코드를 스캔해 주세요.")
+            allowed_set = {_norm_qr(s) for s in allowed if s is not None}
+            allowed_set.discard("")
+            if qr_val not in allowed_set:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
+        device_payload = legacy_device_payload_from_settings(device, qr_val)
 
     # 저장할 시각을 한 번 정한 뒤, 그 시각의 한국 시간(KST)으로 식사 종류(정책) 판단 및 로그 저장 (서버의 "지금"이 아닌 로그 시각 기준)
     event_kst = utc_now().astimezone(KST)
@@ -111,6 +134,7 @@ async def process_qr_scan(
         guest_count=0,
         status="ARRIVED",
         path="QR",
+        qr_terminal_id=qr_terminal_id,
         final_price=policy.base_price,
         created_at=event_kst.replace(tzinfo=None)  # 한국 시간 로컬 시각 그대로 저장 (naive)
     )
@@ -133,6 +157,7 @@ async def process_qr_scan(
             "name": current_user.name,
             "meal_type_label": meal_type_label,
             "date_time_str": date_time_str,
+            "device": device_payload,
         }
     }))
     

@@ -129,13 +129,18 @@ async def create_manual_meal(
     
     # WebSocket Broadcast (실시간 갱신용)
     from app.api.websocket import manager
+    from app.api.admin.settings import get_device_settings_from_db
+    from app.api.admin.terminals import legacy_device_payload_from_settings
     import asyncio
+    device = await get_device_settings_from_db(db)
+    device_payload = legacy_device_payload_from_settings(device, "")
     asyncio.create_task(manager.broadcast({
         "type": "MEAL_LOG_CREATED",
         "data": {
             "log_id": new_log.id,
             "path": "MANUAL",
-            "user_id": user_id
+            "user_id": user_id,
+            "device": device_payload,
         }
     }))
     

@@ -82,6 +82,13 @@ Antigravity AI에서 Cursor로 이관한 프로젝트입니다.
 - **API 주소**: `pc_app.py` 상단 `API_BASE_URL`, `WS_URL` 수정
 - **타임아웃**: `API_TIMEOUT` (초)
 
+## 경광등 DLL 모드
+
+- 기본값은 `QLIGHT_MODE=auto` (DLL 우선, 실패 시 RAW TCP fallback)
+- DLL 강제: `QLIGHT_MODE=dll`
+- RAW TCP 강제: `QLIGHT_MODE=raw`
+- DLL 경로 추가 지정: `QLIGHT_DLL_PATHS` (세미콜론 `;` 구분)
+
 ## 폴더 구조
 
 ```

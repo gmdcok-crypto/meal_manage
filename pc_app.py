@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QStackedWidget, QTableWidget, QTableWidgetItem,
     QLineEdit, QComboBox, QFrame, QHeaderView, QGraphicsDropShadowEffect,
-    QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout, QPlainTextEdit, QSizePolicy, QCheckBox, QSpinBox, QGroupBox
+    QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout,     QPlainTextEdit, QSizePolicy, QCheckBox, QSpinBox, QGroupBox, QScrollArea, QDialogButtonBox,
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QTime, QDate, QByteArray
 from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QResizeEvent
@@ -61,12 +61,16 @@ def _run_print_and_qlight(meal_data: dict, device_settings: dict):
     if device_settings.get("qlight_enabled") and (device_settings.get("qlight_host") or "").strip():
         try:
             import qlight_st45l
-            qlight_st45l.trigger_ok(
-                host=(device_settings.get("qlight_host") or "").strip(),
-                port=int(device_settings.get("qlight_port") or 20000),
+            q_host = (device_settings.get("qlight_host") or "").strip()
+            q_port = int(device_settings.get("qlight_port") or 20000)
+            ok = qlight_st45l.trigger_ok(
+                host=q_host,
+                port=q_port,
+                blink=False,
             )
-        except Exception:
-            pass
+            print(f"[QLIGHT] trigger_ok host={q_host} port={q_port} result={ok}")
+        except Exception as e:
+            print(f"[QLIGHT] trigger exception: {e}")
 
 
 # --- WebSocket Client Thread ---
@@ -87,8 +91,10 @@ class WSClient(QThread):
     async def listen(self):
         while self.running:
             try:
+                print(f"[WS] connecting: {self.ws_url}")
                 async with websockets.connect(self.ws_url) as ws:
                     self.ws = ws
+                    print("[WS] connected")
                     while self.running:
                         msg = await ws.recv()
                         try:
@@ -96,8 +102,9 @@ class WSClient(QThread):
                             self.message_received.emit(data)
                         except (json.JSONDecodeError, TypeError):
                             pass
-            except Exception:
+            except Exception as e:
                 # Reconnect on error after delay
+                print(f"[WS] error/reconnect: {e}")
                 if self.running:
                     await asyncio.sleep(3)
                     
@@ -687,6 +694,47 @@ class APIClient:
         except Exception as e:
             return (False, str(e))
 
+    def list_qr_terminals(self):
+        try:
+            r = self.client.get(f"{self.base_url}/terminals", headers=self._auth_headers())
+            return r.json() if r.status_code == 200 else []
+        except Exception:
+            return []
+
+    def get_qr_terminal(self, terminal_id: int):
+        try:
+            r = self.client.get(f"{self.base_url}/terminals/{terminal_id}", headers=self._auth_headers())
+            return r.json() if r.status_code == 200 else None
+        except Exception:
+            return None
+
+    def create_qr_terminal(self, data: dict):
+        try:
+            r = self.client.post(f"{self.base_url}/terminals", json=data, headers=self._auth_headers())
+            if r.status_code == 200:
+                return (True, r.json())
+            body = r.json() if r.text else {}
+            return (False, body.get("detail", "등록 실패"))
+        except Exception as e:
+            return (False, str(e))
+
+    def update_qr_terminal(self, terminal_id: int, data: dict):
+        try:
+            r = self.client.put(f"{self.base_url}/terminals/{terminal_id}", json=data, headers=self._auth_headers())
+            if r.status_code == 200:
+                return (True, r.json())
+            body = r.json() if r.text else {}
+            return (False, body.get("detail", "수정 실패"))
+        except Exception as e:
+            return (False, str(e))
+
+    def delete_qr_terminal(self, terminal_id: int):
+        try:
+            r = self.client.delete(f"{self.base_url}/terminals/{terminal_id}", headers=self._auth_headers())
+            return r.status_code == 200
+        except Exception:
+            return False
+
     def close(self):
         self.client.close()
 
@@ -1098,9 +1146,6 @@ class DepartmentScreen(QWidget):
         reg_frame = QFrame()
         reg_frame.setObjectName("StatCard")
         reg_layout = QHBoxLayout(reg_frame)
-        self.company_combo = QComboBox()
-        self.company_combo.setItemDelegate(QStyledItemDelegate())
-        self.company_combo.setFixedWidth(200)
         self.code_input = QLineEdit()
         self.code_input.setPlaceholderText("부서코드")
         self.name_input = QLineEdit()
@@ -1120,23 +1165,19 @@ class DepartmentScreen(QWidget):
         self.del_btn.setFixedWidth(100)
         self.del_btn.clicked.connect(self.on_delete)
         
-        reg_layout.addWidget(self.company_combo)
         reg_layout.addWidget(self.code_input)
         reg_layout.addWidget(self.name_input)
         reg_layout.addWidget(self.add_btn)
         reg_layout.addWidget(self.edit_btn)
         reg_layout.addWidget(self.del_btn)
         
-        # Connect combo change to filtering
-        self.company_combo.currentIndexChanged.connect(self.load_data)
-        
         header_layout.addWidget(header)
         header_layout.addStretch()
         header_layout.addWidget(reg_frame)
         layout.addLayout(header_layout)
         
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["회사", "부서코드", "부서명"])
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["부서코드", "부서명"])
         setup_standard_table(self.table)
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         layout.addWidget(self.table)
@@ -1146,16 +1187,10 @@ class DepartmentScreen(QWidget):
         if selected:
             row = selected[0].row()
             item0 = self.table.item(row, 0)
-            comp_id = item0.data(Qt.UserRole + 1) if item0 else None
-            if comp_id is not None:
-                idx = self.company_combo.findData(comp_id)
-                if idx >= 0:
-                    self.company_combo.setCurrentIndex(idx)
             item1 = self.table.item(row, 1)
-            item2 = self.table.item(row, 2)
-            self.code_input.setText(item1.text() if item1 else "")
-            self.name_input.setText(item2.text() if item2 else "")
             dept_id = item0.data(Qt.UserRole) if item0 else None
+            self.code_input.setText(item0.text() if item0 else "")
+            self.name_input.setText(item1.text() if item1 else "")
             self.edit_btn.setEnabled(dept_id is not None)
             self.del_btn.setEnabled(dept_id is not None)
             self.name_input.setFocus()
@@ -1173,16 +1208,11 @@ class DepartmentScreen(QWidget):
         self.del_btn.setEnabled(False)
 
     def update_company_combo(self, companies):
-        self.company_combo.blockSignals(True)
-        self.company_combo.clear()
-        self.company_combo.addItem("** 선택 **", None)
-        for c in companies:
-            if isinstance(c, dict):
-                self.company_combo.addItem(c["name"], c["id"])
-        self.company_combo.blockSignals(False)
+        pass  # 부서 관리: 회사 1개만 사용, 콤보 없음
 
     def load_data(self):
-        cid = self.company_combo.currentData()
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
         if cid is None:
             self.table.setRowCount(0)
             return
@@ -1195,7 +1225,6 @@ class DepartmentScreen(QWidget):
             self.table.setRowCount(0)
             return
 
-        # Optimization: Use local cache from main window (match company_id as int)
         dept_list = [
             d for d in self.main_win.departments_data
             if isinstance(d, dict) and d.get("company_id") is not None and int(d.get("company_id")) == cid_int
@@ -1209,21 +1238,12 @@ class DepartmentScreen(QWidget):
         self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(data))
 
-        # Create mapping for company names
-        comp_map = {c["id"]: c["name"] for c in self.main_win.companies_data if isinstance(c, dict)}
-
         for i, row in enumerate(data):
             if not isinstance(row, dict): continue
-            cid = row.get("company_id")
-            comp_name = comp_map.get(cid, str(cid)) if cid is not None else ""
-            item_comp = QTableWidgetItem(comp_name)
-            item_comp.setData(Qt.UserRole, row.get("id"))
-            item_comp.setData(Qt.UserRole + 1, cid)
-            self.table.setItem(i, 0, item_comp)
-            code = row.get("code")
-            name = row.get("name")
-            self.table.setItem(i, 1, QTableWidgetItem(str(code) if code is not None else ""))
-            self.table.setItem(i, 2, QTableWidgetItem(str(name) if name is not None else ""))
+            item_code = QTableWidgetItem(str(row.get("code") or ""))
+            item_code.setData(Qt.UserRole, row.get("id"))
+            self.table.setItem(i, 0, item_code)
+            self.table.setItem(i, 1, QTableWidgetItem(str(row.get("name") or "")))
         self.table.setUpdatesEnabled(True)
         self.table.setSortingEnabled(True)
 
@@ -1265,6 +1285,8 @@ class DepartmentScreen(QWidget):
             QMessageBox.information(self, "성공", "수정되었습니다.")
             self.clear_inputs()
             self.load_data()
+            self.main_win.employees.update_dept_combo()
+            self.main_win.reports._refresh_dept_sub_combo()
         else:
             QMessageBox.warning(self, "오류", "수정에 실패했습니다.")
 
@@ -1279,7 +1301,7 @@ class DepartmentScreen(QWidget):
         if did is None:
             QMessageBox.warning(self, "경고", "선택한 항목을 삭제할 수 없습니다.")
             return
-        name_item = self.table.item(row, 2)
+        name_item = self.table.item(row, 1)
         name = name_item.text() if name_item else "(선택 행)"
         
         reply = QMessageBox.question(self, "삭제 확인", f"'{name}' 부서를 정말 삭제하시겠습니까?",
@@ -1306,6 +1328,8 @@ class DepartmentScreen(QWidget):
                 target_did = self.table.item(row, 0).data(Qt.UserRole)
                 self.main_win.departments_data = [d for d in self.main_win.departments_data if d["id"] != target_did]
                 self.table.removeRow(row)
+            self.main_win.employees.update_dept_combo()
+            self.main_win.reports._refresh_dept_sub_combo()
             self.main_win.sync_departments()
             QMessageBox.information(self, "성공", "삭제되었습니다.")
             self.clear_inputs()
@@ -1314,23 +1338,21 @@ class DepartmentScreen(QWidget):
             QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
 
     def on_add(self):
-        cid = self.company_combo.currentData()
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
         code = self.code_input.text()
         name = self.name_input.text()
         if not cid or not code or not name:
-            QMessageBox.warning(self, "경고", "회사 선택 및 코드/이름을 입력하세요.")
+            QMessageBox.warning(self, "경고", "코드와 부서명을 입력하세요.")
             return
 
         # Optimistic UI update
         pos = self.table.rowCount()
         self.table.insertRow(pos)
-        comp_name = self.company_combo.currentText()
-        item_comp = QTableWidgetItem(comp_name)
-        item_comp.setData(Qt.UserRole, None)
-        item_comp.setData(Qt.UserRole + 1, cid)
-        self.table.setItem(pos, 0, item_comp)
-        self.table.setItem(pos, 1, QTableWidgetItem(code))
-        self.table.setItem(pos, 2, QTableWidgetItem(name))
+        item_code = QTableWidgetItem(code)
+        item_code.setData(Qt.UserRole, None)
+        self.table.setItem(pos, 0, item_code)
+        self.table.setItem(pos, 1, QTableWidgetItem(name))
 
         self.add_btn.setEnabled(False)
         self.add_loader = DataLoader(self.api.create_department, cid, code, name)
@@ -1349,8 +1371,9 @@ class DepartmentScreen(QWidget):
         if success and isinstance(data, dict):
             self.main_win.statusBar().showMessage("부서가 등록되었습니다.", 3000)
             self.main_win.departments_data.append(data)
-            # Refresh table from cache so all rows (existing + new) show code/name correctly (avoids sort/row glitches)
             self.load_data()
+            self.main_win.employees.update_dept_combo()
+            self.main_win.reports._refresh_dept_sub_combo()
             QMessageBox.information(self, "성공", "등록되었습니다.")
             self.clear_inputs()
         else:
@@ -1389,11 +1412,6 @@ class EmployeeScreen(QWidget):
         reg_frame = QFrame()
         reg_frame.setObjectName("StatCard")
         reg_layout = QHBoxLayout(reg_frame)
-        
-        self.company_combo = QComboBox()
-        self.company_combo.setItemDelegate(QStyledItemDelegate())
-        self.company_combo.setPlaceholderText("회사")
-        self.company_combo.setFixedWidth(180)
         
         self.dept_combo = QComboBox()
         self.dept_combo.setItemDelegate(QStyledItemDelegate())
@@ -1451,7 +1469,6 @@ class EmployeeScreen(QWidget):
         self.import_btn.setFixedWidth(120)
         self.import_btn.clicked.connect(self.on_import_excel)
         
-        reg_layout.addWidget(self.company_combo)
         reg_layout.addWidget(self.dept_combo)
         reg_layout.addWidget(self.emp_no_input)
         reg_layout.addWidget(self.name_input)
@@ -1465,34 +1482,32 @@ class EmployeeScreen(QWidget):
         layout.addWidget(reg_frame)
 
         # Table (재직+퇴사 한 테이블, 상태 컬럼 추가)
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["사번", "회사", "이름", "부서", "인증", "상태"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["사번", "이름", "부서", "인증", "상태"])
         setup_standard_table(self.table)
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
         layout.addWidget(self.table)
 
         # Connections
         self.search_input.textChanged.connect(self.load_data)
-        self.company_combo.currentIndexChanged.connect(self.update_dept_combo)
 
     def update_company_combo(self, companies):
-        self.company_combo.blockSignals(True)
-        self.company_combo.clear()
-        self.company_combo.addItem("** 선택 **", None)
-        for c in companies:
-            if isinstance(c, dict):
-                self.company_combo.addItem(c["name"], c["id"])
-        self.company_combo.blockSignals(False)
+        """회사 1개만 사용: 부서 콤보만 갱신."""
         self.update_dept_combo()
 
     def update_dept_combo(self):
-        cid = self.company_combo.currentData()
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
         self.dept_combo.clear()
         self.dept_combo.addItem("** 선택 **", None)
         if cid is not None:
-            depts = [d for d in self.main_win.departments_data if d.get("company_id") == cid]
+            try:
+                cid_int = int(cid)
+                depts = [d for d in self.main_win.departments_data if isinstance(d, dict) and d.get("company_id") is not None and int(d.get("company_id")) == cid_int]
+            except (TypeError, ValueError):
+                depts = []
             for d in depts:
-                self.dept_combo.addItem(d["name"], d["id"]) # Use ID as data
+                self.dept_combo.addItem(d["name"], d["id"])
 
     def on_selection_changed(self):
         self.edit_btn.setEnabled(False)
@@ -1506,22 +1521,18 @@ class EmployeeScreen(QWidget):
             item0 = self.table.item(row, 0)
             item1 = self.table.item(row, 1)
             item2 = self.table.item(row, 2)
-            item3 = self.table.item(row, 3)
-            item5 = self.table.item(row, 5)
+            item4 = self.table.item(row, 4)
             emp_no = item0.text() if item0 else ""
-            comp_name = item1.text() if item1 else ""
-            name = item2.text() if item2 else ""
-            dept_name = item3.text() if item3 else ""
-            status_text = (item5.text() if item5 else "").strip()
+            name = item1.text() if item1 else ""
+            dept_name = item2.text() if item2 else ""
+            status_text = (item4.text() if item4 else "").strip()
 
             self.emp_no_input.setText(emp_no)
             self.name_input.setText(name)
 
-            idx = self.company_combo.findText(comp_name)
-            if idx >= 0: self.company_combo.setCurrentIndex(idx)
-
             idx = self.dept_combo.findText(dept_name)
-            if idx >= 0: self.dept_combo.setCurrentIndex(idx)
+            if idx >= 0:
+                self.dept_combo.setCurrentIndex(idx)
 
             if item0 and item0.data(Qt.UserRole) is not None:
                 self.edit_btn.setEnabled(True)
@@ -1546,13 +1557,14 @@ class EmployeeScreen(QWidget):
         self.reset_btn.setEnabled(False)
 
     def on_add(self):
-        cid = self.company_combo.currentData()
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
         did = self.dept_combo.currentData()
         emp_no = self.emp_no_input.text().strip()
         name = self.name_input.text().strip()
         
         if not cid or not emp_no or not name:
-            QMessageBox.warning(self, "경고", "모든 정보를 입력하세요.")
+            QMessageBox.warning(self, "경고", "사번과 이름을 입력하세요.")
             return
 
         payload = {
@@ -1578,7 +1590,8 @@ class EmployeeScreen(QWidget):
         eid = item0.data(Qt.UserRole) if item0 else None
         if eid is None: return
         
-        cid = self.company_combo.currentData()
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
         did = self.dept_combo.currentData()
         emp_no = self.emp_no_input.text().strip()
         name = self.name_input.text().strip()
@@ -1595,9 +1608,10 @@ class EmployeeScreen(QWidget):
         self.loader.start()
 
     def on_import_excel(self):
-        cid = self.company_combo.currentData()
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
         if not cid:
-            QMessageBox.warning(self, "경고", "먼저 회사를 선택해 주세요.")
+            QMessageBox.warning(self, "경고", "회사 데이터가 없습니다.")
             return
             
         from PyQt5.QtWidgets import QFileDialog
@@ -1648,15 +1662,15 @@ class EmployeeScreen(QWidget):
             return
         row = selected[0].row()
         item0 = self.table.item(row, 0)
-        item5 = self.table.item(row, 5)
+        item4 = self.table.item(row, 4)
         eid = item0.data(Qt.UserRole) if item0 else None
         if eid is None:
             return
-        status_text = (item5.text() if item5 else "").strip()
+        status_text = (item4.text() if item4 else "").strip()
         if status_text != "퇴사":
             QMessageBox.warning(self, "경고", "퇴사자만 퇴사취소할 수 있습니다.")
             return
-        name_item = self.table.item(row, 2)
+        name_item = self.table.item(row, 1)
         name = name_item.text() if name_item else "(선택 행)"
         if QMessageBox.question(self, "확인", f"'{name}' 사원을 재직으로 복구하시겠습니까?") != QMessageBox.Yes:
             return
@@ -1671,12 +1685,12 @@ class EmployeeScreen(QWidget):
         if not selected: return
         row = selected[0].row()
         item0 = self.table.item(row, 0)
-        item5 = self.table.item(row, 5)
+        item4 = self.table.item(row, 4)
         eid = item0.data(Qt.UserRole) if item0 else None
         if eid is None: return
-        name_item = self.table.item(row, 2)
+        name_item = self.table.item(row, 1)
         name = name_item.text() if name_item else "(선택 행)"
-        status_text = (item5.text() if item5 else "").strip()
+        status_text = (item4.text() if item4 else "").strip()
 
         if status_text == "재직":
             msg = (
@@ -1719,7 +1733,7 @@ class EmployeeScreen(QWidget):
         item0 = self.table.item(row, 0)
         eid = item0.data(Qt.UserRole) if item0 else None
         if eid is None: return
-        name_item = self.table.item(row, 2)
+        name_item = self.table.item(row, 1)
         name = name_item.text() if name_item else "(선택 행)"
         
         if QMessageBox.question(self, "확인", f"'{name}' 사원의 기기 인증 상태 및 비밀번호를 초기화하시겠습니까?") == QMessageBox.Yes:
@@ -1769,13 +1783,21 @@ class EmployeeScreen(QWidget):
             if item.column() == 0 and item.data(Qt.UserRole) is not None:
                 selected_ids.add(item.data(Qt.UserRole))
 
+        companies = getattr(self.main_win, "companies_data", []) or []
+        cid = companies[0]["id"] if companies and isinstance(companies[0], dict) else None
+        if cid is not None:
+            try:
+                cid_int = int(cid)
+                data = [r for r in data if isinstance(r, dict) and r.get("company_id") is not None and int(r.get("company_id")) == cid_int]
+            except (TypeError, ValueError):
+                pass
+
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(data))
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["사번", "회사", "이름", "부서", "인증", "상태"])
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["사번", "이름", "부서", "인증", "상태"])
 
-        comp_map = {c["id"]: c["name"] for c in self.main_win.companies_data if isinstance(c, dict)}
         dept_map = {d["id"]: d["name"] for d in self.main_win.departments_data if isinstance(d, dict)}
 
         for i, row in enumerate(data):
@@ -1784,14 +1806,12 @@ class EmployeeScreen(QWidget):
             row_id = row.get("id")
             item_no.setData(Qt.UserRole, row_id)
 
-            comp_name = comp_map.get(row.get("company_id"), "Unknown")
             dept_name = dept_map.get(row.get("department_id"), "Unknown")
             status_label = "재직" if row.get("status") == "ACTIVE" else "퇴사"
 
             self.table.setItem(i, 0, item_no)
-            self.table.setItem(i, 1, QTableWidgetItem(comp_name))
-            self.table.setItem(i, 2, QTableWidgetItem(str(row.get("name", ""))))
-            self.table.setItem(i, 3, QTableWidgetItem(dept_name))
+            self.table.setItem(i, 1, QTableWidgetItem(str(row.get("name", ""))))
+            self.table.setItem(i, 2, QTableWidgetItem(dept_name))
 
             is_verified = row.get("is_verified", False)
             auth_status = "O" if is_verified else "X"
@@ -1800,18 +1820,18 @@ class EmployeeScreen(QWidget):
                 item_auth.setForeground(QColor("#ef4444"))
             else:
                 item_auth.setForeground(QColor("#10b981"))
-            self.table.setItem(i, 4, item_auth)
+            self.table.setItem(i, 3, item_auth)
 
             item_status = QTableWidgetItem(status_label)
-            self.table.setItem(i, 5, item_status)
+            self.table.setItem(i, 4, item_status)
 
             if row.get("status") == "RESIGNED":
-                for col in range(6):
+                for col in range(5):
                     it = self.table.item(i, col)
                     if it: it.setForeground(QColor("#999999"))
 
             if row_id in selected_ids:
-                for col in range(6):
+                for col in range(5):
                     it = self.table.item(i, col)
                     if it: it.setSelected(True)
 
@@ -1861,6 +1881,11 @@ class RawDataScreen(QWidget):
         header_layout.addSpacing(10)
         header_layout.addWidget(self.search_input)
         header_layout.addWidget(self.search_btn)
+        self.raw_excel_btn = QPushButton("엑셀")
+        self.raw_excel_btn.setObjectName("SecondaryBtn")
+        self.raw_excel_btn.setFixedWidth(70)
+        self.raw_excel_btn.clicked.connect(self.on_raw_excel)
+        header_layout.addWidget(self.raw_excel_btn)
 
         # Main layout structure: Left (Table) / Right (Inputs)
         main_h_layout = QHBoxLayout()
@@ -1907,7 +1932,7 @@ class RawDataScreen(QWidget):
         self.emp_search_input = QLineEdit()
         self.emp_search_input.setPlaceholderText("검색 버튼을 클릭하세요...")
         self.emp_search_input.setReadOnly(True)
-        self.emp_search_btn = QPushButton("검색")
+        self.emp_search_btn = QPushButton("사원검색")
         self.emp_search_btn.setObjectName("PrimaryBtn")
         self.emp_search_btn.setFixedWidth(100)
         self.emp_search_btn.clicked.connect(self.on_search_employee)
@@ -2149,6 +2174,59 @@ class RawDataScreen(QWidget):
         self.add_btn.setEnabled(True)
         self.edit_btn.setEnabled(False)
         self.del_btn.setEnabled(False)
+
+    def on_raw_excel(self):
+        """원시데이터 테이블을 엑셀 파일로 저장 후 열기"""
+        import os
+        import tempfile
+        import subprocess
+        import sys
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, Alignment
+        except ImportError:
+            QMessageBox.warning(self, "오류", "엑셀 저장을 위해 openpyxl이 필요합니다.\npip install openpyxl")
+            return
+        start_str = self.start_date_edit.date().toString("yyyy-MM-dd")
+        end_str = self.end_date_edit.date().toString("yyyy-MM-dd")
+        title = "원시데이터"
+        period_str = f"조회기간: {start_str} ~ {end_str}"
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "원시데이터"
+        col_count = self.table.columnCount()
+        if col_count > 1:
+            ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=col_count)
+        ws.cell(row=1, column=1, value=title).font = Font(bold=True, size=16)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal="center", vertical="center")
+        ws.row_dimensions[1].height = 28
+        ws.cell(row=2, column=1, value=period_str)
+        for c in range(col_count):
+            h = self.table.horizontalHeaderItem(c)
+            ws.cell(row=3, column=c + 1, value=h.text() if h else "").font = Font(bold=True)
+        for r in range(self.table.rowCount()):
+            for c in range(col_count):
+                item = self.table.item(r, c)
+                val = item.text() if item else ""
+                ws.cell(row=r + 4, column=c + 1, value=val)
+        for i in range(1, col_count + 1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 14
+        try:
+            fd, save_path = tempfile.mkstemp(suffix=".xlsx", prefix="RawData_")
+            os.close(fd)
+            wb.save(save_path)
+        except Exception as e:
+            QMessageBox.warning(self, "오류", f"엑셀 파일 생성 실패:\n{e}")
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(save_path)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", save_path], check=True)
+            else:
+                subprocess.run(["xdg-open", save_path], check=True)
+        except Exception:
+            pass
 
     def on_add(self):
         if not self.selected_user_id:
@@ -2495,6 +2573,7 @@ class ReportScreen(QWidget):
         self.api = api
         self.main_win = main_win
         self.full_data = []
+        self.report_detail_employee = None  # 개인별 상세로 선택된 사원
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(30, 30, 30, 30)
@@ -2534,19 +2613,25 @@ class ReportScreen(QWidget):
         self.dept_sub_combo = QComboBox()
         self.dept_sub_combo.setFixedWidth(180)
         self._refresh_dept_sub_combo()
-        self.dept_sub_combo.currentIndexChanged.connect(self.display_data)
+        self.dept_sub_combo.currentIndexChanged.connect(self._on_dept_combo_changed)
         
-        self.download_btn = QPushButton()
+        # 개인별 상세: 레이블 + 검색 버튼 (원시데이터 사원조회와 동일한 검색 다이얼로그)
+        self.report_detail_label = QLabel("개인별 상세")
+        self.report_detail_label.setObjectName("InputLabel")
+        self.report_detail_search_btn = QPushButton("사원검색")
+        self.report_detail_search_btn.setObjectName("PrimaryBtn")
+        self.report_detail_search_btn.setFixedWidth(100)
+        self.report_detail_search_btn.clicked.connect(self._on_report_detail_search)
+        self.report_detail_name_edit = QLineEdit()
+        self.report_detail_name_edit.setPlaceholderText("검색 버튼을 클릭하세요...")
+        self.report_detail_name_edit.setReadOnly(True)
+        self.report_detail_name_edit.setFixedWidth(160)
+        self.report_detail_name_edit.setMinimumHeight(36)
+        
+        self.download_btn = QPushButton("엑셀")
         self.download_btn.setObjectName("SecondaryBtn")
         self.download_btn.setToolTip("엑셀 다운로드")
-        self.download_btn.setFixedWidth(50)
-        
-        # Excel Icon SVG (Base64)
-        excel_svg = QByteArray.fromBase64(b"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiMxMGI5ODEiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj4KICA8cGF0aCBkPSJNMTUgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjdaIi8+CiAgPHBhdGggZD0iTTE0IDJ2NGEyIDIgMCAwIDAgMiAyaDQiLz4KICA8cGF0aCBkPSJNOCAxM2gyIi8+CiAgPHBhdGggZD0iTTE0IDEzaDIiLz4KICA8cGF0aCBkPSJNOCAxN2gyIi8+CiAgPHBhdGggZD0iTTE0IDE3aDIiLz4KICA8cGF0aCBkPSJNMTAgMTFoNHYxMGgtNHoiLz4KPC9zdmc+")
-        pixmap = QPixmap()
-        pixmap.loadFromData(excel_svg)
-        self.download_btn.setIcon(QIcon(pixmap))
-        self.download_btn.setIconSize(QSize(28, 28))
+        self.download_btn.setFixedWidth(70)
         self.download_btn.clicked.connect(self.on_download_excel)
         
         controls_layout.addWidget(date_label)
@@ -2555,6 +2640,10 @@ class ReportScreen(QWidget):
         controls_layout.addWidget(self.end_date_edit)
         controls_layout.addSpacing(20)
         controls_layout.addWidget(self.dept_sub_combo)
+        controls_layout.addSpacing(15)
+        controls_layout.addWidget(self.report_detail_label)
+        controls_layout.addWidget(self.report_detail_search_btn)
+        controls_layout.addWidget(self.report_detail_name_edit)
         controls_layout.addStretch()
         controls_layout.addWidget(self.download_btn)
         
@@ -2594,9 +2683,25 @@ class ReportScreen(QWidget):
                     self.dept_sub_combo.addItem(n, d.get("id"))
         self.dept_sub_combo.setCurrentIndex(0)
 
+    def _on_dept_combo_changed(self):
+        self.report_detail_employee = None
+        self.report_detail_name_edit.clear()
+        self.display_data()
+
+    def _on_report_detail_search(self):
+        dialog = EmployeeSearchDialog(self.api, self.main_win, self)
+        if dialog.exec_():
+            emp = dialog.selected_employee
+            if emp:
+                self.report_detail_employee = emp
+                self.report_detail_name_edit.setText(emp.get("name") or "")
+                self.display_data()
+
     def reset_report(self):
         """다른 창 갔다 왔을 때 보고서 화면 초기화 (조회는 하지 않음)"""
         self.full_data = []
+        self.report_detail_employee = None
+        self.report_detail_name_edit.clear()
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         self.table.setColumnCount(6)
@@ -2632,15 +2737,75 @@ class ReportScreen(QWidget):
 
     def display_data(self):
         # 부서 콤보로 테이블 구분: 개인별 → 집계 테이블, 전체부서/부서별 → 상세 리스트 테이블
+        # 개인별 상세(검색으로 선택한 사원)가 있으면 해당 사원 상세만 표시 (컬럼은 전체부서와 동일)
+        self.table.setUpdatesEnabled(False)
+        self.table.setSortingEnabled(False)
+        self.table.clearSelection()
+
+        if self.report_detail_employee:
+            emp_id = self.report_detail_employee.get("id")
+            data = [log for log in self.full_data if (log.get("user") or {}).get("id") == emp_id]
+            self.table.setColumnCount(6)
+            self.table.setHorizontalHeaderLabels(["날짜", "시간", "식사명", "부서", "이름", "사번"])
+            data = sorted(data, key=lambda log: log.get("created_at") or "")
+            total_amount = 0
+            total_meals = 0
+            for log in data:
+                guest = log.get("guest_count") or log.get("guestCount") or 0
+                price = log.get("final_price") or log.get("finalPrice") or 0
+                try:
+                    guest = int(guest)
+                except (TypeError, ValueError):
+                    guest = 0
+                try:
+                    price = int(price)
+                except (TypeError, ValueError):
+                    price = 0
+                total_amount += price * (1 + guest)
+                total_meals += (1 + guest)
+            self.table.setRowCount(len(data))
+            for i, log in enumerate(data):
+                u = log.get("user") or log.get("User") or {}
+                if not isinstance(u, dict):
+                    u = {}
+                created = log.get("created_at")
+                if isinstance(created, dict):
+                    date_part = str(created.get("date", created.get("date_time", "")))[:10]
+                    time_part = str(created.get("time", ""))[:8]
+                elif isinstance(created, str):
+                    created = created.strip()
+                    if "T" in created:
+                        date_part = created.split("T")[0]
+                        time_part = (created.split("T")[-1].replace("Z", "").strip())[:8]
+                    else:
+                        date_part = created[:10] if len(created) >= 10 else created
+                        time_part = ""
+                else:
+                    date_part = ""
+                    time_part = ""
+                meal_type = str((log.get("policy") or {}).get("meal_type") or "번외")
+                dept_name = u.get("department_name")
+                if not dept_name and isinstance(u.get("department"), dict):
+                    dept_name = (u.get("department") or {}).get("name")
+                dept_name = str(dept_name or log.get("department_name") or "")
+                name_str = str(u.get("name") or log.get("user_name") or "")
+                emp_no_str = str(u.get("emp_no") or u.get("empNo") or log.get("emp_no") or "")
+                self.table.setItem(i, 0, QTableWidgetItem(date_part))
+                self.table.setItem(i, 1, QTableWidgetItem(time_part))
+                self.table.setItem(i, 2, QTableWidgetItem(meal_type))
+                self.table.setItem(i, 3, QTableWidgetItem(dept_name))
+                self.table.setItem(i, 4, QTableWidgetItem(name_str))
+                self.table.setItem(i, 5, QTableWidgetItem(emp_no_str))
+            self.report_footer_label.setText(f"합계: {total_amount:,}({total_meals})")
+            self.table.setSortingEnabled(True)
+            self.table.setUpdatesEnabled(True)
+            return
+
         dept_id = self.dept_sub_combo.currentData()
         data = self.full_data if dept_id in (None, "INDIVIDUAL") else [
             log for log in self.full_data
             if (log.get("user") or {}).get("department_id") == dept_id
         ]
-
-        self.table.setUpdatesEnabled(False)
-        self.table.setSortingEnabled(False)
-        self.table.clearSelection()
 
         if dept_id == "INDIVIDUAL":
             # 개인별 조회 → 사번, 성명, 부서, 식사 횟수, 합계 식수, 총 금액
@@ -2715,7 +2880,7 @@ class ReportScreen(QWidget):
                     u = {}
                 created = log.get("created_at")
                 if isinstance(created, dict):
-                    date_part = str(created.get("date", created.get("date_time", ""))[:10])
+                    date_part = str(created.get("date", created.get("date_time", "")))[:10]
                     time_part = str(created.get("time", ""))[:8]
                 elif isinstance(created, str):
                     created = created.strip()
@@ -2765,7 +2930,9 @@ class ReportScreen(QWidget):
             return
 
         dept_id = self.dept_sub_combo.currentData()
-        if dept_id == "INDIVIDUAL":
+        if self.report_detail_employee:
+            title = "개인별 상세 보고서 - " + (self.report_detail_employee.get("name") or "선택 사원")
+        elif dept_id == "INDIVIDUAL":
             title = "개인별 보고서"
         elif dept_id is None:
             title = "전체부서 보고서"
@@ -2813,7 +2980,7 @@ class ReportScreen(QWidget):
         next_row = self.table.rowCount() + 4
         right_align = Alignment(horizontal="right", vertical="center")
 
-        if dept_id == "INDIVIDUAL":
+        if dept_id == "INDIVIDUAL" and not self.report_detail_employee:
             fc = ws.cell(row=next_row, column=1, value=footer_text)
             fc.font = Font(bold=True)
             fc.alignment = right_align
@@ -3125,21 +3292,185 @@ class AdminScreen(QWidget):
             QMessageBox.warning(self, "오류", "초기화에 실패했습니다.")
 
 
+class QrTerminalEditDialog(QDialog):
+    """QR 터미널 추가/수정: 구역명, 스캔 문자열, 프린터·경광등."""
+    def __init__(self, parent, api, terminal_id=None):
+        super().__init__(parent)
+        self.api = api
+        self.terminal_id = terminal_id
+        self.setWindowTitle("QR 터미널 수정" if terminal_id else "QR 터미널 등록")
+        self.setMinimumWidth(480)
+        form = QFormLayout(self)
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("예: 1번 구역")
+        form.addRow("표시 이름:", self.name_edit)
+        self.qr_edit = QLineEdit()
+        self.qr_edit.setPlaceholderText("스캔 시 들어오는 문자열과 동일 (예: 전체 URL)")
+        form.addRow("QR 코드 문자열:", self.qr_edit)
+
+        self.printer_enabled = QCheckBox("식권 프린터 사용")
+        form.addRow(self.printer_enabled)
+        self.printer_host = QLineEdit()
+        self.printer_host.setPlaceholderText("프린터 IP")
+        form.addRow("프린터 IP:", self.printer_host)
+        self.printer_port = QSpinBox()
+        self.printer_port.setRange(1, 65535)
+        self.printer_port.setValue(9100)
+        form.addRow("프린터 포트:", self.printer_port)
+        self.printer_img = QSpinBox()
+        self.printer_img.setRange(1, 99)
+        self.printer_img.setValue(1)
+        form.addRow("저장이미지 번호:", self.printer_img)
+
+        self.qlight_enabled = QCheckBox("경광등 사용")
+        form.addRow(self.qlight_enabled)
+        self.qlight_host = QLineEdit()
+        self.qlight_host.setPlaceholderText("경광등 IP")
+        form.addRow("경광등 IP:", self.qlight_host)
+        self.qlight_port = QSpinBox()
+        self.qlight_port.setRange(1, 65535)
+        self.qlight_port.setValue(20000)
+        form.addRow("경광등 포트:", self.qlight_port)
+
+        self.is_active = QCheckBox("사용")
+        self.is_active.setChecked(True)
+        form.addRow(self.is_active)
+        self.sort_order = QSpinBox()
+        self.sort_order.setRange(0, 9999)
+        form.addRow("정렬 순서:", self.sort_order)
+
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(self._on_ok)
+        bb.rejected.connect(self.reject)
+        form.addRow(bb)
+
+        self.printer_enabled.stateChanged.connect(self._on_printer_toggled)
+        self.qlight_enabled.stateChanged.connect(self._on_qlight_toggled)
+        self._on_printer_toggled()
+        self._on_qlight_toggled()
+
+        if terminal_id and api:
+            d = api.get_qr_terminal(terminal_id)
+            if d:
+                self.name_edit.setText((d.get("name") or "").strip())
+                self.qr_edit.setText((d.get("qr_code") or "").strip())
+                self.printer_enabled.setChecked(bool(d.get("printer_enabled")))
+                self.printer_host.setText((d.get("printer_host") or "").strip())
+                self.printer_port.setValue(int(d.get("printer_port") or 9100))
+                self.printer_img.setValue(int(d.get("printer_stored_image_number") or 1))
+                self.qlight_enabled.setChecked(bool(d.get("qlight_enabled")))
+                self.qlight_host.setText((d.get("qlight_host") or "").strip())
+                self.qlight_port.setValue(int(d.get("qlight_port") or 20000))
+                self.is_active.setChecked(bool(d.get("is_active", True)))
+                self.sort_order.setValue(int(d.get("sort_order") or 0))
+                self._on_printer_toggled()
+                self._on_qlight_toggled()
+
+    def _on_printer_toggled(self):
+        en = self.printer_enabled.isChecked()
+        self.printer_host.setEnabled(en)
+        self.printer_port.setEnabled(en)
+        self.printer_img.setEnabled(en)
+
+    def _on_qlight_toggled(self):
+        en = self.qlight_enabled.isChecked()
+        self.qlight_host.setEnabled(en)
+        self.qlight_port.setEnabled(en)
+
+    def _on_ok(self):
+        qr = (self.qr_edit.text() or "").strip()
+        if not qr:
+            QMessageBox.warning(self, "입력 오류", "QR 코드 문자열은 필수입니다.")
+            return
+        payload = {
+            "name": (self.name_edit.text() or "").strip(),
+            "qr_code": qr,
+            "printer_enabled": self.printer_enabled.isChecked(),
+            "printer_host": (self.printer_host.text() or "").strip(),
+            "printer_port": self.printer_port.value(),
+            "printer_stored_image_number": self.printer_img.value(),
+            "qlight_enabled": self.qlight_enabled.isChecked(),
+            "qlight_host": (self.qlight_host.text() or "").strip(),
+            "qlight_port": self.qlight_port.value(),
+            "is_active": self.is_active.isChecked(),
+            "sort_order": self.sort_order.value(),
+        }
+        if self.terminal_id:
+            ok, err = self.api.update_qr_terminal(self.terminal_id, payload)
+        else:
+            ok, err = self.api.create_qr_terminal(payload)
+        if ok:
+            self.accept()
+        else:
+            QMessageBox.warning(self, "오류", str(err or "저장 실패"))
+
+
 class SettingsScreen(QWidget):
-    """장치 설정: 프린터·경광등 사용 여부 및 IP/포트."""
+    """설정: QR 터미널(구역별 프린터·경광등) + 기본 장치·레거시 허용 QR."""
     def __init__(self, api, main_win):
         super().__init__()
         self.api = api
         self.main_win = main_win
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(30, 30, 30, 30)
-        layout.setSpacing(20)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setSpacing(12)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        inner = QWidget()
+        layout = QVBoxLayout(inner)
+        layout.setSpacing(16)
 
         header = QLabel("설정")
         header.setObjectName("HeaderTitle")
         layout.addWidget(header)
 
-        # 프린터
+        hint = QLabel(
+            "QR 터미널을 한 건 이상 등록하면, PWA에서 스캔한 문자열이 아래 QR 코드와 정확히 일치할 때만 인증되며\n"
+            "해당 줄에 등록된 프린터·경광등으로만 출력됩니다. 터미널이 없으면 예전처럼 아래 「기본 장치」와 「허용 QR」을 사용합니다."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #94a3b8; font-size: 14px;")
+        layout.addWidget(hint)
+
+        term_header = QLabel("QR 터미널 (구역별 프린터·경광등)")
+        term_header.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0;")
+        layout.addWidget(term_header)
+
+        self.term_table = QTableWidget(0, 7)
+        self.term_table.setHorizontalHeaderLabels(["ID", "이름", "QR 문자열", "프린터", "경광등", "순서", "사용"])
+        self.term_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.term_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.term_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.term_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.term_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.term_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.term_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        self.term_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.term_table.setMinimumHeight(200)
+        layout.addWidget(self.term_table)
+
+        tbtn = QHBoxLayout()
+        self.btn_term_add = QPushButton("터미널 추가")
+        self.btn_term_edit = QPushButton("수정")
+        self.btn_term_del = QPushButton("삭제")
+        self.btn_term_refresh = QPushButton("목록 새로고침")
+        self.btn_term_add.clicked.connect(self.on_terminal_add)
+        self.btn_term_edit.clicked.connect(self.on_terminal_edit)
+        self.btn_term_del.clicked.connect(self.on_terminal_delete)
+        self.btn_term_refresh.clicked.connect(self.refresh_terminals)
+        tbtn.addWidget(self.btn_term_add)
+        tbtn.addWidget(self.btn_term_edit)
+        tbtn.addWidget(self.btn_term_del)
+        tbtn.addWidget(self.btn_term_refresh)
+        tbtn.addStretch()
+        layout.addLayout(tbtn)
+
+        legacy_title = QLabel("기본 장치 (수동 원시데이터 등·WebSocket에 device 없을 때)")
+        legacy_title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; margin-top: 8px;")
+        layout.addWidget(legacy_title)
+
         printer_group = QGroupBox("식권 프린터 (빅솔론)")
         printer_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
         printer_layout = QFormLayout(printer_group)
@@ -3149,17 +3480,16 @@ class SettingsScreen(QWidget):
         printer_layout.addRow(self.printer_enabled)
         self.printer_host = QLineEdit()
         self.printer_host.setPlaceholderText("IP 주소 (예: 192.168.0.107)")
-        self.printer_host.setMinimumHeight(40)
+        self.printer_host.setMinimumHeight(36)
         printer_layout.addRow("IP:", self.printer_host)
         self.printer_port = QSpinBox()
         self.printer_port.setRange(1, 65535)
         self.printer_port.setValue(9100)
-        self.printer_port.setMinimumHeight(40)
-        self.printer_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 19px; font-weight: bold; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
+        self.printer_port.setMinimumHeight(36)
+        self.printer_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 16px;")
         printer_layout.addRow("포트:", self.printer_port)
         layout.addWidget(printer_group)
 
-        # 경광등
         qlight_group = QGroupBox("경광등 (Q라이트)")
         qlight_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
         qlight_layout = QFormLayout(qlight_group)
@@ -3169,30 +3499,29 @@ class SettingsScreen(QWidget):
         qlight_layout.addRow(self.qlight_enabled)
         self.qlight_host = QLineEdit()
         self.qlight_host.setPlaceholderText("IP 주소 (예: 192.168.0.108)")
-        self.qlight_host.setMinimumHeight(40)
+        self.qlight_host.setMinimumHeight(36)
         qlight_layout.addRow("IP:", self.qlight_host)
         self.qlight_port = QSpinBox()
         self.qlight_port.setRange(1, 65535)
         self.qlight_port.setValue(20000)
-        self.qlight_port.setMinimumHeight(40)
-        self.qlight_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 19px; font-weight: bold; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
+        self.qlight_port.setMinimumHeight(36)
+        self.qlight_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 16px;")
         qlight_layout.addRow("포트:", self.qlight_port)
         layout.addWidget(qlight_group)
 
-        # 허용 QR 코드 (비우면 모든 QR 허용)
-        qr_group = QGroupBox("허용 QR 코드")
+        qr_group = QGroupBox("허용 QR 코드 (터미널 0개일 때만 서버에서 사용)")
         qr_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
         qr_layout = QVBoxLayout(qr_group)
         self.allowed_qr_edit = QPlainTextEdit()
-        self.allowed_qr_edit.setPlaceholderText("한 줄에 QR 내용 하나씩 입력. 비우면 아무 QR나 인증됩니다.")
-        self.allowed_qr_edit.setMinimumHeight(100)
-        self.allowed_qr_edit.setLineWrapMode(QPlainTextEdit.NoWrap)  # 긴 코드가 줄바꿈되어 일부만 복사되는 것 방지
-        self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 19px; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;")
+        self.allowed_qr_edit.setPlaceholderText("한 줄에 QR 내용 하나씩. 터미널이 등록되면 이 목록은 사용되지 않습니다.")
+        self.allowed_qr_edit.setMinimumHeight(80)
+        self.allowed_qr_edit.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 16px;")
         qr_layout.addWidget(self.allowed_qr_edit)
         layout.addWidget(qr_group)
 
         btn_row = QHBoxLayout()
-        save_btn = QPushButton("저장")
+        save_btn = QPushButton("기본 장치·허용 QR 저장")
         save_btn.setObjectName("PrimaryBtn")
         save_btn.setMinimumHeight(44)
         save_btn.clicked.connect(self.save_settings)
@@ -3200,6 +3529,71 @@ class SettingsScreen(QWidget):
         btn_row.addStretch()
         layout.addLayout(btn_row)
         layout.addStretch()
+
+        scroll.setWidget(inner)
+        outer.addWidget(scroll)
+
+    def refresh_terminals(self):
+        self.term_table.setRowCount(0)
+        if not self.api:
+            return
+        rows = self.api.list_qr_terminals()
+        if not isinstance(rows, list):
+            return
+        self.term_table.setRowCount(len(rows))
+        for i, r in enumerate(rows):
+            tid = r.get("id")
+            id_item = QTableWidgetItem(str(tid))
+            id_item.setData(Qt.UserRole, tid)
+            self.term_table.setItem(i, 0, id_item)
+            self.term_table.setItem(i, 1, QTableWidgetItem((r.get("name") or "").strip()))
+            self.term_table.setItem(i, 2, QTableWidgetItem((r.get("qr_code") or "").strip()))
+            ph = (r.get("printer_host") or "").strip()
+            p_on = "ON" if r.get("printer_enabled") and ph else "OFF"
+            self.term_table.setItem(i, 3, QTableWidgetItem("%s %s" % (p_on, ph or "-")))
+            qh = (r.get("qlight_host") or "").strip()
+            q_on = "ON" if r.get("qlight_enabled") and qh else "OFF"
+            self.term_table.setItem(i, 4, QTableWidgetItem("%s %s" % (q_on, qh or "-")))
+            self.term_table.setItem(i, 5, QTableWidgetItem(str(r.get("sort_order") or 0)))
+            self.term_table.setItem(i, 6, QTableWidgetItem("예" if r.get("is_active") else "아니오"))
+
+    def _selected_terminal_id(self):
+        r = self.term_table.currentRow()
+        if r < 0:
+            return None
+        it = self.term_table.item(r, 0)
+        if not it:
+            return None
+        return it.data(Qt.UserRole)
+
+    def on_terminal_add(self):
+        if not self.api:
+            return
+        dlg = QrTerminalEditDialog(self, self.api, None)
+        if dlg.exec():
+            self.refresh_terminals()
+
+    def on_terminal_edit(self):
+        tid = self._selected_terminal_id()
+        if tid is None:
+            QMessageBox.warning(self, "선택", "수정할 행을 선택하세요.")
+            return
+        dlg = QrTerminalEditDialog(self, self.api, tid)
+        if dlg.exec():
+            self.refresh_terminals()
+
+    def on_terminal_delete(self):
+        tid = self._selected_terminal_id()
+        if tid is None:
+            QMessageBox.warning(self, "선택", "삭제할 행을 선택하세요.")
+            return
+        if QMessageBox.question(self, "삭제", "이 터미널을 삭제할까요?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        if self.api and self.api.delete_qr_terminal(tid):
+            QMessageBox.information(self, "완료", "삭제되었습니다.")
+            self.refresh_terminals()
+        else:
+            QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
 
     def _on_printer_toggled(self):
         enabled = self.printer_enabled.isChecked()
@@ -3212,6 +3606,7 @@ class SettingsScreen(QWidget):
         self.qlight_port.setEnabled(enabled)
 
     def load_data(self):
+        self.refresh_terminals()
         data = self.api.get_device_settings() if self.api else None
         if not data:
             self.printer_enabled.setChecked(False)
@@ -3252,7 +3647,7 @@ class SettingsScreen(QWidget):
         }
         ok, result = self.api.put_device_settings(payload)
         if ok:
-            QMessageBox.information(self, "저장 완료", "장치 설정이 저장되었습니다.\nQR 인증 시 적용됩니다.")
+            QMessageBox.information(self, "저장 완료", "기본 장치·허용 QR 목록이 저장되었습니다.")
         else:
             QMessageBox.warning(self, "저장 실패", result or "저장에 실패했습니다.")
 
@@ -3356,6 +3751,8 @@ class MainWindow(QMainWindow):
 
     def on_ws_message(self, data):
         msg_type = data.get("type")
+        if msg_type:
+            print(f"[WS] message type={msg_type}")
         if msg_type in ["USER_VERIFIED", "MEAL_LOG_CREATED"]:
             self.refresh_stats() # refresh active screen and dashboard
         # PC 앱에서 프린터·경광등 신호 전송 (QR 인증 시 WebSocket으로 수신 후 로컬에서 출력)
@@ -3365,11 +3762,24 @@ class MainWindow(QMainWindow):
     def _trigger_devices_from_meal_data(self, meal_data: dict):
         """MEAL_LOG_CREATED 수신 시 설정에 따라 PC에서 프린터·경광등 신호 전송."""
         if not meal_data:
+            print("[DEVICE] skip: empty meal_data")
             return
-        device = self.api.get_device_settings() if self.api else None
+        device = meal_data.get("device")
+        if not device and self.api:
+            device = self.api.get_device_settings()
         if not device:
+            print("[DEVICE] skip: no device settings")
             return
+        print(
+            "[DEVICE] settings "
+            f"terminal_id={device.get('terminal_id')} "
+            f"printer_enabled={bool(device.get('printer_enabled'))} "
+            f"qlight_enabled={bool(device.get('qlight_enabled'))} "
+            f"qlight_host={(device.get('qlight_host') or '').strip()} "
+            f"qlight_port={int(device.get('qlight_port') or 20000)}"
+        )
         if not (device.get("printer_enabled") or device.get("qlight_enabled")):
+            print("[DEVICE] skip: printer/qlight both disabled")
             return
         t = threading.Thread(target=_run_print_and_qlight, args=(meal_data, device), daemon=True)
         t.start()
@@ -3394,11 +3804,9 @@ class MainWindow(QMainWindow):
     def on_dept_sync_finished(self, data):
         if isinstance(data, list):
             self.departments_data = data
-            # Update screens using departments
             if self.stack.currentIndex() == 2:
                 self.departments.load_data()
-            if self.stack.currentIndex() == 3:
-                self.employees.update_dept_combo()
+            self.employees.update_dept_combo()
             self.reports._refresh_dept_sub_combo()
 
     def refresh_stats(self):
@@ -3453,7 +3861,9 @@ class MainWindow(QMainWindow):
             btn.style().polish(btn)
         if idx == 1: self.companies.load_data()
         if idx == 2: self.departments.load_data()  # refresh table when opening tab (filters by selected company)
-        if idx == 3: self.employees.load_data()
+        if idx == 3:
+            self.employees.update_dept_combo()  # 부서 콤보 갱신 (회사 1개 기준)
+            self.employees.load_data()
         if idx == 4: pass # Explicit search only
         if idx == 5: self.policies.load_data()
         if idx == 6:

@@ -83,6 +83,7 @@ class MealLogResponse(BaseModel):
     guest_count: int
     status: str
     path: str
+    qr_terminal_id: Optional[int] = None
     final_price: int
     is_void: bool
     void_reason: Optional[str] = None
@@ -211,3 +212,43 @@ class DeviceSettingsUpdate(BaseModel):
     qlight_host: Optional[str] = None
     qlight_port: Optional[int] = None
     allowed_qr_list: Optional[List[str]] = None
+
+
+# QR 터미널 (구역별 프린터·경광등)
+class MealQrTerminalBase(BaseModel):
+    name: str = ""
+    qr_code: str
+    printer_enabled: bool = False
+    printer_host: str = ""
+    printer_port: int = 9100
+    printer_stored_image_number: int = 1
+    qlight_enabled: bool = False
+    qlight_host: str = ""
+    qlight_port: int = 20000
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class MealQrTerminalCreate(MealQrTerminalBase):
+    pass
+
+
+class MealQrTerminalUpdate(BaseModel):
+    name: Optional[str] = None
+    qr_code: Optional[str] = None
+    printer_enabled: Optional[bool] = None
+    printer_host: Optional[str] = None
+    printer_port: Optional[int] = None
+    printer_stored_image_number: Optional[int] = None
+    qlight_enabled: Optional[bool] = None
+    qlight_host: Optional[str] = None
+    qlight_port: Optional[int] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class MealQrTerminalResponse(MealQrTerminalBase):
+    id: int
+
+    class Config:
+        from_attributes = True
