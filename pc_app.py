@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QAbstractItemView, QDialog, QFormLayout, QMessageBox, QInputDialog, QStyledItemDelegate, QTimeEdit, QDateEdit, QCalendarWidget, QLayout,     QPlainTextEdit, QSizePolicy, QCheckBox, QSpinBox, QGroupBox, QScrollArea, QDialogButtonBox,
 )
 from PyQt5.QtCore import Qt, QSize, pyqtSignal, QTimer, QThread, QTime, QDate, QByteArray
-from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QResizeEvent
+from PyQt5.QtGui import QFont, QColor, QIcon, QPixmap, QResizeEvent, QIntValidator
 
 # --- Config (override via env or edit for deployment) ---
 # 기본: Railway 백엔드 (가이드 예시 주소). 로컬 사용 시 MEAL_API_BASE_URL 으로 http://localhost:8000/api/admin 설정.
@@ -29,6 +29,8 @@ NOTICE_HTML_PATH = os.path.join(_MEAL_MANAGE_ROOT, "static", "notice.html")
 _ws_origin = _API_BASE.replace("https://", "wss://").replace("http://", "ws://").split("/api")[0]
 WS_URL = _ws_origin + "/api/admin/ws"
 API_TIMEOUT = 10.0
+# 로그인: 기본은 창 생략 후 메인 바로 표시. 로그인 창을 쓰려면 환경변수 MEAL_PC_REQUIRE_LOGIN=1 (또는 true/yes)
+PC_APP_SKIP_LOGIN = os.environ.get("MEAL_PC_REQUIRE_LOGIN", "").strip().lower() not in ("1", "true", "yes")
 
 
 def _run_print_and_qlight(meal_data: dict, device_settings: dict):
@@ -136,6 +138,19 @@ class DataLoader(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
+
+def _normalize_api_list_payload(body):
+    """GET 등 응답이 최상위 배열이 아닐 때(래핑 JSON) 리스트만 추출."""
+    if isinstance(body, list):
+        return body
+    if isinstance(body, dict):
+        for key in ("items", "results", "data", "policies", "rows"):
+            v = body.get(key)
+            if isinstance(v, list):
+                return v
+    return []
+
+
 # --- Premium QSS Styling ---
 QSS = """
 QMainWindow { background-color: #0f172a; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; font-weight: bold; }
@@ -148,20 +163,31 @@ QPushButton#MenuBtn {
 QPushButton#MenuBtn:hover { background-color: #334155; color: #f8fafc; }
 QPushButton#MenuBtn[active="true"] { background-color: #6366f1; color: #ffffff; }
 QWidget#ContentArea { background-color: #0f172a; }
-QLabel#HeaderTitle { color: #f8fafc; font-size: 36px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QStackedWidget { background: transparent; }
+/* 각 탭 루트(설정·원시데이터 등) 바탕 = ContentArea와 동일. 앱 전역 QSS라 자식 테이블/버튼 QSS와 충돌 없음 */
+QStackedWidget > QWidget { background-color: #0f172a; }
+QLabel#HeaderTitle { color: #f8fafc; font-size: 36px; font-weight: bold; font-family: 'Malgun Gothic'; background-color: transparent; }
+QWidget#NoticeScreen { background-color: #0f172a; }
 QWidget#NoticeScreen QLabel#HeaderTitle { margin: 0; padding: 0; }
 QWidget#NoticeScreen QLabel#NoticeHint { margin: 0; padding: 0; }
+/* 설정 탭 바탕 = 공지사항 탭(NoticeScreen)과 동일 색. 앱 전역 QSS만 사용(자식 테이블·버튼 QSS 유지) */
+QWidget#SettingsScreenRoot { background-color: #0f172a; }
+/* 설정 탭 QScrollArea 뷰포트·내부는 기본 흰색 → 테이블 아래/위 빈 영역이 하얗게 보임 */
+QScrollArea#SettingsScroll { background-color: #0f172a; border: none; }
+QWidget#SettingsScrollViewport { background-color: #0f172a; }
+QWidget#SettingsScrollInner { background-color: #0f172a; }
+QWidget#SettingsScrollInner QLabel { background-color: transparent; }
 QFrame#StatCard { background-color: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 15px; }
 QLabel#StatValue { color: #f8fafc; font-size: 52px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QLabel#StatLabel { color: #94a3b8; font-size: 22px; font-weight: bold; font-family: 'Malgun Gothic'; }
-QTableWidget { background-color: #1e293b; color: #f1f5f9; gridline-color: #334155; border: none; border-radius: 12px; alternate-background-color: #1a2333; font-size: 17px; selection-background-color: #3b82f6; outline: none; font-weight: bold; }
-QTableWidget::item { padding: 0px; border-bottom: 1px solid #334155; }
-QTableWidget::item:selected { background-color: #3b82f6; color: #ffffff; font-weight: bold; }
-QHeaderView::section { background-color: #111b2d; color: #94a3b8; padding: 12px; border: none; font-weight: bold; font-size: 19px; font-family: 'Malgun Gothic'; border-bottom: 2px solid #334155; }
+QTableWidget { background-color: #1e293b; color: #f1f5f9; gridline-color: #334155; border: 1px solid #334155; border-radius: 12px; alternate-background-color: #1a2333; font-size: 17px; selection-background-color: #3b82f6; outline: none; font-weight: bold; }
+QTableWidget::item { padding: 0px; border-bottom: 1px solid #334155; border-right: 1px solid #334155; }
+QTableWidget::item:selected { background-color: #3b82f6; color: #ffffff; font-weight: bold; border-bottom: 1px solid #334155; border-right: 1px solid #334155; }
+QHeaderView::section { background-color: #111b2d; color: #94a3b8; padding: 12px; font-weight: bold; font-size: 19px; font-family: 'Malgun Gothic'; border: none; border-right: 1px solid #334155; border-bottom: 2px solid #334155; }
 QLineEdit, QTimeEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 10px 15px; font-size: 19px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QDateEdit { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding-left: 10px; padding-right: 30px; font-size: 19px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QDateEdit::up-button { subcontrol-origin: border; subcontrol-position: top right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top-right-radius: 8px; background-color: #334155; }
-ㅍQDateEdit::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top: 1px solid #475569; border-bottom-right-radius: 8px; background-color: #334155; }
+QDateEdit::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top: 1px solid #475569; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::drop-down { subcontrol-origin: border; subcontrol-position: top right; width: 26px; border-left: 1px solid #475569; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::down-arrow { image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgdmlld0JveD0iMCAwIDEwIDEwIj48cGF0aCBkPSJNMSAzIEg5IEw1IDggWiIgZmlsbD0iI2Y4ZmFmYyIvPjwvc3ZnPg=="); width: 12px; height: 12px; }
 QCalendarWidget QWidget { background-color: #1e293b; color: #f8fafc; font-family: 'Malgun Gothic'; }
@@ -175,11 +201,27 @@ QPushButton#SecondaryBtn { background-color: #64748b; color: #f8fafc; border-rad
 QPushButton#SecondaryBtn:hover { background-color: #475569; }
 QPushButton#DangerBtn { background-color: #ef4444; color: white; border-radius: 8px; padding: 10px 20px; font-weight: bold; font-size: 19px; min-height: 40px; min-width: 100px; font-family: 'Malgun Gothic'; }
 QPushButton#DangerBtn:hover { background-color: #dc2626; }
+/* 설정 탭 입력 패널: 추가/수정/삭제 한 줄 */
+QPushButton#SettingsActPrimary { background-color: #3b82f6; color: white; border-radius: 8px; padding: 8px 10px; font-weight: bold; font-size: 17px; min-height: 40px; min-width: 52px; font-family: 'Malgun Gothic'; }
+QPushButton#SettingsActPrimary:hover { background-color: #2563eb; }
+QPushButton#SettingsActSecondary { background-color: #64748b; color: #f8fafc; border-radius: 8px; padding: 8px 10px; font-weight: bold; font-size: 17px; min-height: 40px; min-width: 52px; font-family: 'Malgun Gothic'; }
+QPushButton#SettingsActSecondary:hover { background-color: #475569; }
+QPushButton#SettingsActDanger { background-color: #ef4444; color: white; border-radius: 8px; padding: 8px 10px; font-weight: bold; font-size: 17px; min-height: 40px; min-width: 52px; font-family: 'Malgun Gothic'; }
+QPushButton#SettingsActDanger:hover { background-color: #dc2626; }
 QComboBox { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 15px; font-size: 21px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
 QComboBox QAbstractItemView { background-color: #1e293b; color: #f8fafc; selection-background-color: #3b82f6; border: 1px solid #334155; outline: none; }
 QComboBox QAbstractItemView::item { min-height: 35px; padding: 2px 10px; }
 QLabel#InputLabel { color: #ffffff; font-weight: bold; font-family: 'Malgun Gothic'; font-size: 18px; }
 """
+
+
+def _settings_cm_to_px(cm: float) -> int:
+    """DPI(논리 인치) 기준 cm → 픽셀 (설정 탭 테이블 너비 보조)."""
+    app = QApplication.instance()
+    scr = app.primaryScreen() if app else None
+    dpi = float(scr.logicalDotsPerInchX()) if scr else 96.0
+    return max(1, int(cm * dpi / 2.54))
+
 
 def _auth_url():
     """관리자 로그인 API URL (API_BASE_URL에서 /api/admin → /api/auth/verify_device_admin)."""
@@ -366,7 +408,8 @@ def setup_standard_table(table):
     table.setSelectionMode(QAbstractItemView.SingleSelection)
     table.setEditTriggers(QAbstractItemView.NoEditTriggers)
     table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-    table.setShowGrid(True)
+    # QSS로 셀·헤더 테두리를 그림. setShowGrid(True)이면 선이 겹쳐 보일 수 있음
+    table.setShowGrid(False)
     table.setSortingEnabled(True)
 
 class APIClient:
@@ -493,14 +536,16 @@ class APIClient:
     def get_policies(self):
         try:
             r = self.client.get(f"{self.base_url}/policies", headers=self._auth_headers())
-            return r.json() if r.status_code == 200 else []
+            if r.status_code != 200:
+                return []
+            return _normalize_api_list_payload(r.json())
         except Exception:
             return []
 
     def create_policy(self, data):
         try:
             r = self.client.post(f"{self.base_url}/policies", json=data, headers=self._auth_headers())
-            if r.status_code == 200:
+            if r.status_code in (200, 201):
                 return (True, r.json())
             try:
                 detail = r.json().get("detail", "등록 실패")
@@ -2389,22 +2434,40 @@ class PolicyScreen(QWidget):
         self.table.setHorizontalHeaderLabels(["식사 종류", "시작 시간", "종료 시간", "기본 단가"])
         setup_standard_table(self.table)
         self.table.itemSelectionChanged.connect(self.on_selection_changed)
-        layout.addWidget(self.table)
+        layout.addWidget(self.table, 1)
         
         help_label = QLabel("* 시간 형식: HH:MM:SS (예: 12:00:00)")
         help_label.setStyleSheet("color: #94a3b8; font-size: 14px; font-weight: bold; font-family: 'Malgun Gothic';")
         layout.addWidget(help_label)
         layout.addStretch()
+        self._policy_load_seq = 0
 
     def load_data(self):
+        self._policy_load_seq += 1
+        seq = self._policy_load_seq
         QApplication.setOverrideCursor(Qt.WaitCursor)
         self.loader = DataLoader(self.api.get_policies)
-        self.loader.finished.connect(self.display_data)
+        self.loader.finished.connect(lambda d, s=seq: self._on_policies_list_loaded(d, s))
+        self.loader.error.connect(lambda e, s=seq: self._on_policies_list_error(e, s))
         self.loader.start()
+
+    def _on_policies_list_error(self, err_msg, seq):
+        if seq != self._policy_load_seq:
+            return
+        QApplication.restoreOverrideCursor()
+        QMessageBox.warning(self, "식사 정책", f"목록을 불러오지 못했습니다.\n{err_msg}")
+
+    def _on_policies_list_loaded(self, data, seq):
+        if seq != self._policy_load_seq:
+            return
+        self.display_data(data)
 
     def display_data(self, data):
         QApplication.restoreOverrideCursor()
-        if not isinstance(data, list): return
+        if not isinstance(data, list):
+            data = _normalize_api_list_payload(data)
+        if not isinstance(data, list):
+            data = []
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
         self.table.setRowCount(len(data))
@@ -3046,6 +3109,7 @@ class NoticeScreen(QWidget):
         self.notice_path = NOTICE_HTML_PATH
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Maximum)
         self.setObjectName("NoticeScreen")
+        self.setAutoFillBackground(False)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 0, 24, 10)
@@ -3292,10 +3356,65 @@ class AdminScreen(QWidget):
             QMessageBox.warning(self, "오류", "초기화에 실패했습니다.")
 
 
+QR_TERMINAL_DIALOG_QSS = """
+QDialog#QrTerminalEditDialog {
+    background-color: #0f172a;
+}
+QDialog#QrTerminalEditDialog QLabel {
+    color: #f8fafc;
+    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+    font-weight: bold;
+    font-size: 17px;
+}
+QDialog#QrTerminalEditDialog QLineEdit, QDialog#QrTerminalEditDialog QSpinBox {
+    background-color: #1e293b;
+    border: 1px solid #475569;
+    border-radius: 8px;
+    color: #f8fafc;
+    padding: 8px 12px;
+    font-size: 16px;
+    font-weight: bold;
+    min-height: 36px;
+}
+QDialog#QrTerminalEditDialog QLineEdit:disabled, QDialog#QrTerminalEditDialog QSpinBox:disabled {
+    background-color: #111b2d;
+    color: #64748b;
+}
+QDialog#QrTerminalEditDialog QSpinBox::up-button, QDialog#QrTerminalEditDialog QSpinBox::down-button {
+    background-color: #334155;
+    width: 20px;
+    border: none;
+}
+QDialog#QrTerminalEditDialog QCheckBox {
+    color: #f8fafc;
+    font-weight: bold;
+    font-size: 16px;
+    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+}
+QDialog#QrTerminalEditDialog QDialogButtonBox QPushButton {
+    background-color: #3b82f6;
+    color: white;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-weight: bold;
+    font-size: 16px;
+    min-height: 36px;
+    min-width: 80px;
+    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
+}
+QDialog#QrTerminalEditDialog QDialogButtonBox QPushButton:hover {
+    background-color: #2563eb;
+}
+"""
+
+
 class QrTerminalEditDialog(QDialog):
     """QR 터미널 추가/수정: 구역명, 스캔 문자열, 프린터·경광등."""
     def __init__(self, parent, api, terminal_id=None):
         super().__init__(parent)
+        self.setObjectName("QrTerminalEditDialog")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setStyleSheet(QR_TERMINAL_DIALOG_QSS)
         self.api = api
         self.terminal_id = terminal_id
         self.setWindowTitle("QR 터미널 수정" if terminal_id else "QR 터미널 등록")
@@ -3317,10 +3436,6 @@ class QrTerminalEditDialog(QDialog):
         self.printer_port.setRange(1, 65535)
         self.printer_port.setValue(9100)
         form.addRow("프린터 포트:", self.printer_port)
-        self.printer_img = QSpinBox()
-        self.printer_img.setRange(1, 99)
-        self.printer_img.setValue(1)
-        form.addRow("저장이미지 번호:", self.printer_img)
 
         self.qlight_enabled = QCheckBox("경광등 사용")
         form.addRow(self.qlight_enabled)
@@ -3335,9 +3450,6 @@ class QrTerminalEditDialog(QDialog):
         self.is_active = QCheckBox("사용")
         self.is_active.setChecked(True)
         form.addRow(self.is_active)
-        self.sort_order = QSpinBox()
-        self.sort_order.setRange(0, 9999)
-        form.addRow("정렬 순서:", self.sort_order)
 
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.accepted.connect(self._on_ok)
@@ -3357,12 +3469,10 @@ class QrTerminalEditDialog(QDialog):
                 self.printer_enabled.setChecked(bool(d.get("printer_enabled")))
                 self.printer_host.setText((d.get("printer_host") or "").strip())
                 self.printer_port.setValue(int(d.get("printer_port") or 9100))
-                self.printer_img.setValue(int(d.get("printer_stored_image_number") or 1))
                 self.qlight_enabled.setChecked(bool(d.get("qlight_enabled")))
                 self.qlight_host.setText((d.get("qlight_host") or "").strip())
                 self.qlight_port.setValue(int(d.get("qlight_port") or 20000))
                 self.is_active.setChecked(bool(d.get("is_active", True)))
-                self.sort_order.setValue(int(d.get("sort_order") or 0))
                 self._on_printer_toggled()
                 self._on_qlight_toggled()
 
@@ -3370,7 +3480,6 @@ class QrTerminalEditDialog(QDialog):
         en = self.printer_enabled.isChecked()
         self.printer_host.setEnabled(en)
         self.printer_port.setEnabled(en)
-        self.printer_img.setEnabled(en)
 
     def _on_qlight_toggled(self):
         en = self.qlight_enabled.isChecked()
@@ -3388,16 +3497,16 @@ class QrTerminalEditDialog(QDialog):
             "printer_enabled": self.printer_enabled.isChecked(),
             "printer_host": (self.printer_host.text() or "").strip(),
             "printer_port": self.printer_port.value(),
-            "printer_stored_image_number": self.printer_img.value(),
+            "printer_stored_image_number": 1,
             "qlight_enabled": self.qlight_enabled.isChecked(),
             "qlight_host": (self.qlight_host.text() or "").strip(),
             "qlight_port": self.qlight_port.value(),
             "is_active": self.is_active.isChecked(),
-            "sort_order": self.sort_order.value(),
         }
         if self.terminal_id:
             ok, err = self.api.update_qr_terminal(self.terminal_id, payload)
         else:
+            payload["sort_order"] = 0
             ok, err = self.api.create_qr_terminal(payload)
         if ok:
             self.accept()
@@ -3411,27 +3520,31 @@ class SettingsScreen(QWidget):
         super().__init__()
         self.api = api
         self.main_win = main_win
-        _bg = "#0f172a"
+        # 바탕은 전역 QSS `QWidget#SettingsScreenRoot`(공지사항 탭 NoticeScreen과 동일 #0f172a). 스크롤만 투명.
         self.setObjectName("SettingsScreenRoot")
-        self.setStyleSheet(f"QWidget#SettingsScreenRoot {{ background-color: {_bg}; }}")
-
+        self.setAutoFillBackground(False)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(30, 30, 30, 30)
         outer.setSpacing(12)
 
         scroll = QScrollArea()
+        self._settings_scroll = scroll
         scroll.setObjectName("SettingsScroll")
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(
-            f"QScrollArea#SettingsScroll {{ background-color: {_bg}; border: none; }}"
-            f"QScrollArea#SettingsScroll > QWidget > QWidget {{ background-color: {_bg}; }}"
-        )
-        scroll.viewport().setStyleSheet(f"background-color: {_bg};")
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setAttribute(Qt.WA_StyledBackground, True)
+        scroll.setAutoFillBackground(False)
+        _vp = scroll.viewport()
+        _vp.setObjectName("SettingsScrollViewport")
+        _vp.setAttribute(Qt.WA_StyledBackground, True)
+        _vp.setAutoFillBackground(False)
 
         inner = QWidget()
-        inner.setStyleSheet(f"background-color: {_bg};")
+        self._settings_inner = inner
+        inner.setObjectName("SettingsScrollInner")
+        inner.setAttribute(Qt.WA_StyledBackground, True)
+        inner.setAutoFillBackground(False)
         layout = QVBoxLayout(inner)
         layout.setSpacing(16)
 
@@ -3444,119 +3557,458 @@ class SettingsScreen(QWidget):
             "터미널이 하나도 없으면 서버는 예전 방식(시스템 설정의 허용 QR·기본 장치)을 씁니다. (PC에서는 여기서만 터미널을 관리합니다.)"
         )
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #94a3b8; font-size: 14px;")
+        hint.setStyleSheet("color: #94a3b8; font-size: 14px; background-color: transparent;")
         layout.addWidget(hint)
 
-        term_header = QLabel("QR 터미널 (구역별 프린터·경광등)")
-        term_header.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0;")
-        layout.addWidget(term_header)
+        inner.setMinimumWidth(1000)
+        _st_adj = _settings_cm_to_px(5.0)
+        self._st_table_min_w = max(220, 420 - _st_adj)
+        self._st_panel_w = 300 + _st_adj
 
-        self.term_table = QTableWidget(0, 7)
-        self.term_table.setHorizontalHeaderLabels(["ID", "이름", "QR 문자열", "프린터", "경광등", "순서", "사용"])
-        setup_standard_table(self.term_table)
-        self.term_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.term_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.term_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.term_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.term_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.term_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self.term_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        self.term_table.setMinimumHeight(200)
-        layout.addWidget(self.term_table)
-
-        tbtn = QHBoxLayout()
-        self.btn_term_add = QPushButton("터미널 추가")
-        self.btn_term_add.setObjectName("PrimaryBtn")
-        self.btn_term_add.setFixedHeight(40)
-        self.btn_term_add.setMinimumWidth(120)
-        self.btn_term_edit = QPushButton("수정")
-        self.btn_term_edit.setObjectName("SecondaryBtn")
-        self.btn_term_edit.setFixedHeight(40)
-        self.btn_term_edit.setFixedWidth(80)
-        self.btn_term_del = QPushButton("삭제")
-        self.btn_term_del.setObjectName("DangerBtn")
-        self.btn_term_del.setFixedHeight(40)
-        self.btn_term_del.setFixedWidth(80)
-        self.btn_term_refresh = QPushButton("목록 새로고침")
-        self.btn_term_refresh.setObjectName("SecondaryBtn")
-        self.btn_term_refresh.setFixedHeight(40)
-        self.btn_term_refresh.setMinimumWidth(120)
-        self.btn_term_add.clicked.connect(self.on_terminal_add)
-        self.btn_term_edit.clicked.connect(self.on_terminal_edit)
-        self.btn_term_del.clicked.connect(self.on_terminal_delete)
-        self.btn_term_refresh.clicked.connect(self.refresh_terminals)
-        tbtn.addWidget(self.btn_term_add)
-        tbtn.addWidget(self.btn_term_edit)
-        tbtn.addWidget(self.btn_term_del)
-        tbtn.addWidget(self.btn_term_refresh)
-        tbtn.addStretch()
-        layout.addLayout(tbtn)
+        layout.addWidget(self._build_printer_section())
+        layout.addSpacing(24)
+        layout.addWidget(self._build_qlight_section())
         layout.addStretch()
 
         scroll.setWidget(inner)
         outer.addWidget(scroll)
 
+    def _settings_form_label(self, text):
+        lb = QLabel(text)
+        lb.setObjectName("InputLabel")
+        return lb
+
+    def _settings_parse_port(self, le: QLineEdit) -> int:
+        """포트 QLineEdit → 1~65535 정수. 실패 시 경고 후 -1."""
+        t = (le.text() or "").strip()
+        if not t:
+            QMessageBox.warning(self, "입력", "포트를 입력하세요.")
+            return -1
+        try:
+            v = int(t)
+            if 1 <= v <= 65535:
+                return v
+        except ValueError:
+            pass
+        QMessageBox.warning(self, "입력", "포트는 1~65535 숫자로 입력하세요.")
+        return -1
+
+    def _build_printer_section(self):
+        """식권 프린터: 테이블(ID, IP, 포트, 연결QR) + 우측 입력 + 추가/수정/삭제."""
+        wrap = QWidget()
+        v = QVBoxLayout(wrap)
+        v.setSpacing(8)
+        title = QLabel("식권 프린터 등록")
+        title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
+        v.addWidget(title)
+
+        row = QHBoxLayout()
+        self.printer_table = QTableWidget(0, 4)
+        self.printer_table.setHorizontalHeaderLabels(["ID", "IP", "포트", "연결QR"])
+        setup_standard_table(self.printer_table)
+        self.printer_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.printer_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.printer_table.setColumnWidth(1, 140)
+        self.printer_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.printer_table.setColumnWidth(2, 80)
+        self.printer_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.printer_table.setMinimumHeight(180)
+        self.printer_table.setMinimumWidth(self._st_table_min_w)
+        self.printer_table.itemSelectionChanged.connect(self._on_printer_row_selected)
+        row.addWidget(self.printer_table, 3)
+
+        panel = QFrame()
+        panel.setObjectName("StatCard")
+        panel.setFixedWidth(self._st_panel_w)
+        pf = QVBoxLayout(panel)
+        pf.setSpacing(10)
+        pf.addWidget(self._settings_form_label("IP"))
+        self.p_ip = QLineEdit()
+        self.p_ip.setPlaceholderText("프린터 IP")
+        pf.addWidget(self.p_ip)
+        pf.addWidget(self._settings_form_label("포트"))
+        self.p_port = QLineEdit()
+        self.p_port.setPlaceholderText("9100")
+        self.p_port.setValidator(QIntValidator(1, 65535, self.p_port))
+        self.p_port.setText("9100")
+        pf.addWidget(self.p_port)
+        pf.addWidget(self._settings_form_label("연결QR"))
+        self.p_qr = QLineEdit()
+        self.p_qr.setPlaceholderText("PWA 스캔 문자열과 동일")
+        pf.addWidget(self.p_qr)
+        self.p_active = QCheckBox("사용 (스캔 인증)")
+        self.p_active.setChecked(True)
+        self.p_active.setStyleSheet("color: #e2e8f0; font-weight: bold;")
+        pf.addWidget(self.p_active)
+        pbtn = QHBoxLayout()
+        pbtn.setSpacing(8)
+        self.btn_p_add = QPushButton("추가")
+        self.btn_p_add.setObjectName("SettingsActPrimary")
+        self.btn_p_add.setFixedHeight(40)
+        self.btn_p_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_p_add.clicked.connect(self._printer_form_add)
+        self.btn_p_edit = QPushButton("수정")
+        self.btn_p_edit.setObjectName("SettingsActSecondary")
+        self.btn_p_edit.setFixedHeight(40)
+        self.btn_p_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_p_edit.clicked.connect(self._printer_form_save)
+        self.btn_p_del = QPushButton("삭제")
+        self.btn_p_del.setObjectName("SettingsActDanger")
+        self.btn_p_del.setFixedHeight(40)
+        self.btn_p_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_p_del.clicked.connect(self._printer_form_delete)
+        pbtn.addWidget(self.btn_p_add, 0)
+        pbtn.addWidget(self.btn_p_edit, 0)
+        pbtn.addWidget(self.btn_p_del, 0)
+        pbtn.addStretch(1)
+        pf.addLayout(pbtn)
+        pf.addStretch()
+        row.addWidget(panel, 1)
+        v.addLayout(row)
+        self._printer_editing_id = None
+        return wrap
+
+    def _build_qlight_section(self):
+        """경광등: 테이블 + 우측 입력 + 추가/수정/삭제."""
+        wrap = QWidget()
+        v = QVBoxLayout(wrap)
+        v.setSpacing(8)
+        title = QLabel("경광등 등록")
+        title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
+        v.addWidget(title)
+
+        row = QHBoxLayout()
+        self.qlight_table = QTableWidget(0, 4)
+        self.qlight_table.setHorizontalHeaderLabels(["ID", "IP", "포트", "연결QR"])
+        setup_standard_table(self.qlight_table)
+        self.qlight_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.qlight_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.qlight_table.setColumnWidth(1, 140)
+        self.qlight_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
+        self.qlight_table.setColumnWidth(2, 80)
+        self.qlight_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.qlight_table.setMinimumHeight(180)
+        self.qlight_table.setMinimumWidth(self._st_table_min_w)
+        self.qlight_table.itemSelectionChanged.connect(self._on_qlight_row_selected)
+        row.addWidget(self.qlight_table, 3)
+
+        panel = QFrame()
+        panel.setObjectName("StatCard")
+        panel.setFixedWidth(self._st_panel_w)
+        qf = QVBoxLayout(panel)
+        qf.setSpacing(10)
+        qf.addWidget(self._settings_form_label("IP"))
+        self.q_ip = QLineEdit()
+        self.q_ip.setPlaceholderText("경광등 IP")
+        qf.addWidget(self.q_ip)
+        qf.addWidget(self._settings_form_label("포트"))
+        self.q_port = QLineEdit()
+        self.q_port.setPlaceholderText("20000")
+        self.q_port.setValidator(QIntValidator(1, 65535, self.q_port))
+        self.q_port.setText("20000")
+        qf.addWidget(self.q_port)
+        qf.addWidget(self._settings_form_label("연결QR"))
+        self.q_qr = QLineEdit()
+        self.q_qr.setPlaceholderText("PWA 스캔 문자열과 동일")
+        qf.addWidget(self.q_qr)
+        self.q_active = QCheckBox("사용 (스캔 인증)")
+        self.q_active.setChecked(True)
+        self.q_active.setStyleSheet("color: #e2e8f0; font-weight: bold;")
+        qf.addWidget(self.q_active)
+        qbtn = QHBoxLayout()
+        qbtn.setSpacing(8)
+        self.btn_q_add = QPushButton("추가")
+        self.btn_q_add.setObjectName("SettingsActPrimary")
+        self.btn_q_add.setFixedHeight(40)
+        self.btn_q_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_q_add.clicked.connect(self._qlight_form_add)
+        self.btn_q_edit = QPushButton("수정")
+        self.btn_q_edit.setObjectName("SettingsActSecondary")
+        self.btn_q_edit.setFixedHeight(40)
+        self.btn_q_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_q_edit.clicked.connect(self._qlight_form_save)
+        self.btn_q_del = QPushButton("삭제")
+        self.btn_q_del.setObjectName("SettingsActDanger")
+        self.btn_q_del.setFixedHeight(40)
+        self.btn_q_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_q_del.clicked.connect(self._qlight_form_delete)
+        qbtn.addWidget(self.btn_q_add, 0)
+        qbtn.addWidget(self.btn_q_edit, 0)
+        qbtn.addWidget(self.btn_q_del, 0)
+        qbtn.addStretch(1)
+        qf.addLayout(qbtn)
+        qf.addStretch()
+        row.addWidget(panel, 1)
+        v.addLayout(row)
+        self._qlight_editing_id = None
+        return wrap
+
+    def _find_terminal_by_qr(self, qr: str):
+        q = (qr or "").strip()
+        if not self.api or not q:
+            return None
+        rows = self.api.list_qr_terminals()
+        if not isinstance(rows, list):
+            return None
+        for row in rows:
+            if (row.get("qr_code") or "").strip() == q:
+                return row
+        return None
+
+    def _on_printer_row_selected(self):
+        r = self.printer_table.currentRow()
+        if r < 0:
+            self._printer_editing_id = None
+            return
+        it = self.printer_table.item(r, 0)
+        if not it:
+            return
+        tid = it.data(Qt.UserRole)
+        self._printer_editing_id = tid
+        if not self.api:
+            return
+        d = self.api.get_qr_terminal(tid)
+        if not d:
+            return
+        self.p_ip.setText((d.get("printer_host") or "").strip())
+        self.p_port.setText(str(int(d.get("printer_port") or 9100)))
+        self.p_qr.setText((d.get("qr_code") or "").strip())
+        self.p_active.setChecked(bool(d.get("is_active", True)))
+
+    def _on_qlight_row_selected(self):
+        r = self.qlight_table.currentRow()
+        if r < 0:
+            self._qlight_editing_id = None
+            return
+        it = self.qlight_table.item(r, 0)
+        if not it:
+            return
+        tid = it.data(Qt.UserRole)
+        self._qlight_editing_id = tid
+        if not self.api:
+            return
+        d = self.api.get_qr_terminal(tid)
+        if not d:
+            return
+        self.q_ip.setText((d.get("qlight_host") or "").strip())
+        self.q_port.setText(str(int(d.get("qlight_port") or 20000)))
+        self.q_qr.setText((d.get("qr_code") or "").strip())
+        self.q_active.setChecked(bool(d.get("is_active", True)))
+
+    def _printer_form_add(self):
+        self.printer_table.clearSelection()
+        self._printer_editing_id = None
+        self.p_ip.clear()
+        self.p_port.setText("9100")
+        self.p_qr.clear()
+        self.p_active.setChecked(True)
+
+    def _qlight_form_add(self):
+        self.qlight_table.clearSelection()
+        self._qlight_editing_id = None
+        self.q_ip.clear()
+        self.q_port.setText("20000")
+        self.q_qr.clear()
+        self.q_active.setChecked(True)
+
+    def _printer_form_save(self):
+        if not self.api:
+            return
+        qr = (self.p_qr.text() or "").strip()
+        ip = (self.p_ip.text() or "").strip()
+        if not qr:
+            QMessageBox.warning(self, "입력", "연결QR은 필수입니다.")
+            return
+        port = self._settings_parse_port(self.p_port)
+        if port < 0:
+            return
+        if self._printer_editing_id is None:
+            existing = self._find_terminal_by_qr(qr)
+            if existing:
+                ok, err = self.api.update_qr_terminal(
+                    existing["id"],
+                    {
+                        "qr_code": qr,
+                        "printer_enabled": True,
+                        "printer_host": ip,
+                        "printer_port": port,
+                        "is_active": self.p_active.isChecked(),
+                    },
+                )
+                msg = "같은 연결QR 터미널에 프린터 정보를 반영했습니다." if ok else str(err or "저장 실패")
+            else:
+                payload = {
+                    "name": "",
+                    "qr_code": qr,
+                    "printer_enabled": True,
+                    "printer_host": ip,
+                    "printer_port": port,
+                    "printer_stored_image_number": 1,
+                    "qlight_enabled": False,
+                    "qlight_host": "",
+                    "qlight_port": 20000,
+                    "is_active": self.p_active.isChecked(),
+                    "sort_order": 0,
+                }
+                ok, err = self.api.create_qr_terminal(payload)
+                msg = "등록되었습니다." if ok else str(err or "등록 실패")
+            if ok:
+                QMessageBox.information(self, "완료", msg)
+                self.refresh_terminals()
+                self._printer_form_add()
+            else:
+                QMessageBox.warning(self, "오류", msg)
+            return
+        ok, err = self.api.update_qr_terminal(
+            self._printer_editing_id,
+            {
+                "qr_code": qr,
+                "printer_enabled": True,
+                "printer_host": ip,
+                "printer_port": port,
+                "is_active": self.p_active.isChecked(),
+            },
+        )
+        if ok:
+            QMessageBox.information(self, "완료", "수정되었습니다.")
+            self.refresh_terminals()
+        else:
+            QMessageBox.warning(self, "오류", str(err or "수정 실패"))
+
+    def _printer_form_delete(self):
+        tid = self._printer_editing_id
+        if tid is None:
+            QMessageBox.warning(self, "선택", "삭제할 행을 선택하거나 추가 후 목록에서 선택하세요.")
+            return
+        if QMessageBox.question(
+            self,
+            "삭제",
+            "이 터미널(ID %s)을 삭제하면 같은 연결QR의 경광등 설정도 함께 삭제됩니다. 계속할까요?" % tid,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        ) != QMessageBox.Yes:
+            return
+        if self.api and self.api.delete_qr_terminal(tid):
+            QMessageBox.information(self, "완료", "삭제되었습니다.")
+            self.refresh_terminals()
+            self._printer_form_add()
+        else:
+            QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
+
+    def _qlight_form_save(self):
+        if not self.api:
+            return
+        qr = (self.q_qr.text() or "").strip()
+        ip = (self.q_ip.text() or "").strip()
+        if not qr:
+            QMessageBox.warning(self, "입력", "연결QR은 필수입니다.")
+            return
+        port = self._settings_parse_port(self.q_port)
+        if port < 0:
+            return
+        if self._qlight_editing_id is None:
+            existing = self._find_terminal_by_qr(qr)
+            if existing:
+                ok, err = self.api.update_qr_terminal(
+                    existing["id"],
+                    {
+                        "qr_code": qr,
+                        "qlight_enabled": True,
+                        "qlight_host": ip,
+                        "qlight_port": port,
+                        "is_active": self.q_active.isChecked(),
+                    },
+                )
+                msg = "같은 연결QR 터미널에 경광등 정보를 반영했습니다." if ok else str(err or "저장 실패")
+            else:
+                payload = {
+                    "name": "",
+                    "qr_code": qr,
+                    "printer_enabled": False,
+                    "printer_host": "",
+                    "printer_port": 9100,
+                    "printer_stored_image_number": 1,
+                    "qlight_enabled": True,
+                    "qlight_host": ip,
+                    "qlight_port": port,
+                    "is_active": self.q_active.isChecked(),
+                    "sort_order": 0,
+                }
+                ok, err = self.api.create_qr_terminal(payload)
+                msg = "등록되었습니다." if ok else str(err or "등록 실패")
+            if ok:
+                QMessageBox.information(self, "완료", msg)
+                self.refresh_terminals()
+                self._qlight_form_add()
+            else:
+                QMessageBox.warning(self, "오류", msg)
+            return
+        ok, err = self.api.update_qr_terminal(
+            self._qlight_editing_id,
+            {
+                "qr_code": qr,
+                "qlight_enabled": True,
+                "qlight_host": ip,
+                "qlight_port": port,
+                "is_active": self.q_active.isChecked(),
+            },
+        )
+        if ok:
+            QMessageBox.information(self, "완료", "수정되었습니다.")
+            self.refresh_terminals()
+        else:
+            QMessageBox.warning(self, "오류", str(err or "수정 실패"))
+
+    def _qlight_form_delete(self):
+        tid = self._qlight_editing_id
+        if tid is None:
+            QMessageBox.warning(self, "선택", "삭제할 행을 선택하세요.")
+            return
+        if QMessageBox.question(
+            self,
+            "삭제",
+            "이 터미널(ID %s)을 삭제하면 같은 연결QR의 프린터 설정도 함께 삭제됩니다. 계속할까요?" % tid,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        ) != QMessageBox.Yes:
+            return
+        if self.api and self.api.delete_qr_terminal(tid):
+            QMessageBox.information(self, "완료", "삭제되었습니다.")
+            self.refresh_terminals()
+            self._qlight_form_add()
+        else:
+            QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
+
     def refresh_terminals(self):
-        self.term_table.setRowCount(0)
+        self.printer_table.setRowCount(0)
+        self.qlight_table.setRowCount(0)
         if not self.api:
             return
         rows = self.api.list_qr_terminals()
         if not isinstance(rows, list):
             return
-        self.term_table.setRowCount(len(rows))
+        self.printer_table.setRowCount(len(rows))
+        self.qlight_table.setRowCount(len(rows))
         for i, r in enumerate(rows):
             tid = r.get("id")
             id_item = QTableWidgetItem(str(tid))
             id_item.setData(Qt.UserRole, tid)
-            self.term_table.setItem(i, 0, id_item)
-            self.term_table.setItem(i, 1, QTableWidgetItem((r.get("name") or "").strip()))
-            self.term_table.setItem(i, 2, QTableWidgetItem((r.get("qr_code") or "").strip()))
+            qr = (r.get("qr_code") or "").strip()
             ph = (r.get("printer_host") or "").strip()
-            p_on = "ON" if r.get("printer_enabled") and ph else "OFF"
-            self.term_table.setItem(i, 3, QTableWidgetItem("%s %s" % (p_on, ph or "-")))
+            pp = r.get("printer_port")
+            self.printer_table.setItem(i, 0, id_item)
+            self.printer_table.setItem(i, 1, QTableWidgetItem(ph if r.get("printer_enabled") else ""))
+            self.printer_table.setItem(i, 2, QTableWidgetItem(str(pp or "") if r.get("printer_enabled") else ""))
+            self.printer_table.setItem(i, 3, QTableWidgetItem(qr))
+
+            id_item2 = QTableWidgetItem(str(tid))
+            id_item2.setData(Qt.UserRole, tid)
             qh = (r.get("qlight_host") or "").strip()
-            q_on = "ON" if r.get("qlight_enabled") and qh else "OFF"
-            self.term_table.setItem(i, 4, QTableWidgetItem("%s %s" % (q_on, qh or "-")))
-            self.term_table.setItem(i, 5, QTableWidgetItem(str(r.get("sort_order") or 0)))
-            self.term_table.setItem(i, 6, QTableWidgetItem("예" if r.get("is_active") else "아니오"))
-
-    def _selected_terminal_id(self):
-        r = self.term_table.currentRow()
-        if r < 0:
-            return None
-        it = self.term_table.item(r, 0)
-        if not it:
-            return None
-        return it.data(Qt.UserRole)
-
-    def on_terminal_add(self):
-        if not self.api:
-            return
-        dlg = QrTerminalEditDialog(self, self.api, None)
-        if dlg.exec():
-            self.refresh_terminals()
-
-    def on_terminal_edit(self):
-        tid = self._selected_terminal_id()
-        if tid is None:
-            QMessageBox.warning(self, "선택", "수정할 행을 선택하세요.")
-            return
-        dlg = QrTerminalEditDialog(self, self.api, tid)
-        if dlg.exec():
-            self.refresh_terminals()
-
-    def on_terminal_delete(self):
-        tid = self._selected_terminal_id()
-        if tid is None:
-            QMessageBox.warning(self, "선택", "삭제할 행을 선택하세요.")
-            return
-        if QMessageBox.question(self, "삭제", "이 터미널을 삭제할까요?", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
-            return
-        if self.api and self.api.delete_qr_terminal(tid):
-            QMessageBox.information(self, "완료", "삭제되었습니다.")
-            self.refresh_terminals()
-        else:
-            QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
+            qp = r.get("qlight_port")
+            self.qlight_table.setItem(i, 0, id_item2)
+            self.qlight_table.setItem(i, 1, QTableWidgetItem(qh if r.get("qlight_enabled") else ""))
+            self.qlight_table.setItem(i, 2, QTableWidgetItem(str(qp or "") if r.get("qlight_enabled") else ""))
+            self.qlight_table.setItem(i, 3, QTableWidgetItem(qr))
 
     def load_data(self):
         self.refresh_terminals()
@@ -3635,6 +4087,12 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.settings_screen)
         self.content_layout.addWidget(self.stack)
         main_layout.addWidget(content_container)
+        # QWidget은 기본적으로 QSS 배경을 안 칠함 → Windows에서 탭 바탕이 흰색으로 보임. WA_StyledBackground 필요.
+        for _i in range(self.stack.count()):
+            _w = self.stack.widget(_i)
+            if _w is not None:
+                _w.setAttribute(Qt.WA_StyledBackground, True)
+                _w.setAutoFillBackground(False)
         self.switch_screen(0)
         self.on_company_changed() # Initial load of companies
         self.refresh_stats()
@@ -3796,10 +4254,13 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    login_dialog = AdminLoginDialog()
-    if login_dialog.exec_() != QDialog.Accepted or not getattr(login_dialog, "token", None):
-        sys.exit(0)
-    api = APIClient(token=login_dialog.token)
+    if PC_APP_SKIP_LOGIN:
+        api = APIClient(token=None)
+    else:
+        login_dialog = AdminLoginDialog()
+        if login_dialog.exec_() != QDialog.Accepted or not getattr(login_dialog, "token", None):
+            sys.exit(0)
+        api = APIClient(token=login_dialog.token)
     window = MainWindow(api=api)
     window.show()
     sys.exit(app.exec_())

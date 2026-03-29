@@ -29,7 +29,8 @@ async def list_raw_data(
     query = select(MealLog).options(
         selectinload(MealLog.user).selectinload(User.department_ref),
         selectinload(MealLog.policy),
-        selectinload(MealLog.void_operator),
+        # void_operator도 User → department_name 프로퍼티가 department_ref 접근 → 미로딩 시 MissingGreenlet(500)
+        selectinload(MealLog.void_operator).selectinload(User.department_ref),
     )
 
     filters = []

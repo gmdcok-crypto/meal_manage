@@ -79,7 +79,7 @@ class MealLogCreate(BaseModel):
 class MealLogResponse(BaseModel):
     id: int
     user_id: int
-    policy_id: int
+    policy_id: Optional[int] = None  # 번외 등 DB NULL 허용 → 직렬화/보고서 조회 500 방지
     guest_count: int
     status: str
     path: str
