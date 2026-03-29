@@ -3411,14 +3411,27 @@ class SettingsScreen(QWidget):
         super().__init__()
         self.api = api
         self.main_win = main_win
+        _bg = "#0f172a"
+        self.setObjectName("SettingsScreenRoot")
+        self.setStyleSheet(f"QWidget#SettingsScreenRoot {{ background-color: {_bg}; }}")
+
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(20, 20, 20, 20)
+        outer.setContentsMargins(30, 30, 30, 30)
         outer.setSpacing(12)
 
         scroll = QScrollArea()
+        scroll.setObjectName("SettingsScroll")
+        scroll.setFrameShape(QFrame.NoFrame)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(
+            f"QScrollArea#SettingsScroll {{ background-color: {_bg}; border: none; }}"
+            f"QScrollArea#SettingsScroll > QWidget > QWidget {{ background-color: {_bg}; }}"
+        )
+        scroll.viewport().setStyleSheet(f"background-color: {_bg};")
+
         inner = QWidget()
+        inner.setStyleSheet(f"background-color: {_bg};")
         layout = QVBoxLayout(inner)
         layout.setSpacing(16)
 
@@ -3440,6 +3453,7 @@ class SettingsScreen(QWidget):
 
         self.term_table = QTableWidget(0, 7)
         self.term_table.setHorizontalHeaderLabels(["ID", "이름", "QR 문자열", "프린터", "경광등", "순서", "사용"])
+        setup_standard_table(self.term_table)
         self.term_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.term_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.term_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
@@ -3447,15 +3461,26 @@ class SettingsScreen(QWidget):
         self.term_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.term_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.term_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        self.term_table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.term_table.setMinimumHeight(200)
         layout.addWidget(self.term_table)
 
         tbtn = QHBoxLayout()
         self.btn_term_add = QPushButton("터미널 추가")
+        self.btn_term_add.setObjectName("PrimaryBtn")
+        self.btn_term_add.setFixedHeight(40)
+        self.btn_term_add.setMinimumWidth(120)
         self.btn_term_edit = QPushButton("수정")
+        self.btn_term_edit.setObjectName("SecondaryBtn")
+        self.btn_term_edit.setFixedHeight(40)
+        self.btn_term_edit.setFixedWidth(80)
         self.btn_term_del = QPushButton("삭제")
+        self.btn_term_del.setObjectName("DangerBtn")
+        self.btn_term_del.setFixedHeight(40)
+        self.btn_term_del.setFixedWidth(80)
         self.btn_term_refresh = QPushButton("목록 새로고침")
+        self.btn_term_refresh.setObjectName("SecondaryBtn")
+        self.btn_term_refresh.setFixedHeight(40)
+        self.btn_term_refresh.setMinimumWidth(120)
         self.btn_term_add.clicked.connect(self.on_terminal_add)
         self.btn_term_edit.clicked.connect(self.on_terminal_edit)
         self.btn_term_del.clicked.connect(self.on_terminal_delete)
