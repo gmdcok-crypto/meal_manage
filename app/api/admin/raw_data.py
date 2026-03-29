@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.api.auth import get_current_admin
 from app.models.models import MealLog, User, MealPolicy
@@ -25,19 +25,22 @@ async def list_raw_data(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    query = (
-        select(MealLog)
-        .outerjoin(User, MealLog.user_id == User.id)
-        .outerjoin(MealPolicy, MealLog.policy_id == MealPolicy.id)
-        .options(
-            joinedload(MealLog.user).joinedload(User.department_ref),
-            joinedload(MealLog.policy),
-            joinedload(MealLog.void_operator)
-        )
+    # selectinload: 비동기 세션에서 joinedload+수동 outerjoin 조합은 관계 미로딩 → lazy 접근 시 MissingGreenlet(500) 유발 가능
+    query = select(MealLog).options(
+        selectinload(MealLog.user).selectinload(User.department_ref),
+        selectinload(MealLog.policy),
+        selectinload(MealLog.void_operator),
     )
 
-    
     filters = []
+    if search:
+        query = query.join(User, MealLog.user_id == User.id)
+        filters.append(
+            or_(
+                User.name.icontains(search),
+                User.emp_no.icontains(search),
+            )
+        )
     if start_date and end_date:
         # 사용자 선택 날짜는 KST 기준, created_at(KST naive) 필터
         start_naive, end_naive = kst_date_range_to_naive(start_date, end_date)
@@ -52,11 +55,6 @@ async def list_raw_data(
         start_naive, end_naive = kst_date_range_to_naive(end_date, end_date)
         filters.append(MealLog.created_at >= start_naive)
         filters.append(MealLog.created_at < end_naive)
-    if search:
-        filters.append(or_(
-            User.name.icontains(search),
-            User.emp_no.icontains(search)
-        ))
     if path:
         filters.append(MealLog.path == path)
     if is_void is not None:
