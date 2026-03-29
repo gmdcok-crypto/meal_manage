@@ -3807,8 +3807,8 @@ class SettingsScreen(QWidget):
         self.btn_p_add.setObjectName("SettingsActPrimary")
         self.btn_p_add.setFixedHeight(40)
         self.btn_p_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_p_add.setToolTip("입력창을 비우고 새 프린터를 등록할 준비를 합니다.")
-        self.btn_p_add.clicked.connect(self._printer_form_add)
+        self.btn_p_add.setToolTip("서버에 저장합니다. 「저장」과 동일합니다. 성공 후 입력창이 비워집니다.")
+        self.btn_p_add.clicked.connect(self._printer_form_save)
         self.btn_p_save = QPushButton("저장")
         self.btn_p_save.setObjectName("SettingsActSecondary")
         self.btn_p_save.setFixedHeight(40)
@@ -3874,8 +3874,8 @@ class SettingsScreen(QWidget):
         self.btn_q_add.setObjectName("SettingsActPrimary")
         self.btn_q_add.setFixedHeight(40)
         self.btn_q_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_q_add.setToolTip("입력창을 비우고 새 경광등을 등록할 준비를 합니다.")
-        self.btn_q_add.clicked.connect(self._qlight_form_add)
+        self.btn_q_add.setToolTip("서버에 저장합니다. 「저장」과 동일합니다. 성공 후 입력창이 비워집니다.")
+        self.btn_q_add.clicked.connect(self._qlight_form_save)
         self.btn_q_save = QPushButton("저장")
         self.btn_q_save.setObjectName("SettingsActSecondary")
         self.btn_q_save.setFixedHeight(40)
@@ -4181,37 +4181,38 @@ class SettingsScreen(QWidget):
             return
         p_rows = self.api.list_printer_terminals()
         q_rows = self.api.list_qlight_terminals()
-        if p_rows is None or q_rows is None:
-            return
-        self.printer_table.setRowCount(0)
-        self.qlight_table.setRowCount(0)
-        self.printer_table.setRowCount(len(p_rows))
-        self.qlight_table.setRowCount(len(q_rows))
-        for i, r in enumerate(p_rows):
-            tid = r.get("id")
-            id_item = QTableWidgetItem(str(tid))
-            id_item.setData(Qt.UserRole, tid)
-            qauth = r.get("qr_auth_id")
-            qr_disp = str(int(qauth)) if qauth is not None else ""
-            ph = (r.get("printer_host") or "").strip()
-            pp = r.get("printer_port")
-            self.printer_table.setItem(i, 0, id_item)
-            self.printer_table.setItem(i, 1, QTableWidgetItem(ph))
-            self.printer_table.setItem(i, 2, QTableWidgetItem(str(pp or "")))
-            self.printer_table.setItem(i, 3, QTableWidgetItem(qr_disp))
+        # 한쪽 API만 실패해도 다른 테이블은 갱신 (이전에는 둘 중 하나만 401이어도 둘 다 안 그려짐)
+        if p_rows is not None:
+            self.printer_table.setRowCount(0)
+            self.printer_table.setRowCount(len(p_rows))
+            for i, r in enumerate(p_rows):
+                tid = r.get("id")
+                id_item = QTableWidgetItem(str(tid))
+                id_item.setData(Qt.UserRole, tid)
+                qauth = r.get("qr_auth_id")
+                qr_disp = str(int(qauth)) if qauth is not None else ""
+                ph = (r.get("printer_host") or "").strip()
+                pp = r.get("printer_port")
+                self.printer_table.setItem(i, 0, id_item)
+                self.printer_table.setItem(i, 1, QTableWidgetItem(ph))
+                self.printer_table.setItem(i, 2, QTableWidgetItem(str(pp or "")))
+                self.printer_table.setItem(i, 3, QTableWidgetItem(qr_disp))
 
-        for i, r in enumerate(q_rows):
-            tid = r.get("id")
-            id_item2 = QTableWidgetItem(str(tid))
-            id_item2.setData(Qt.UserRole, tid)
-            qauth = r.get("qr_auth_id")
-            qr_disp = str(int(qauth)) if qauth is not None else ""
-            qh = (r.get("qlight_host") or "").strip()
-            qp = r.get("qlight_port")
-            self.qlight_table.setItem(i, 0, id_item2)
-            self.qlight_table.setItem(i, 1, QTableWidgetItem(qh))
-            self.qlight_table.setItem(i, 2, QTableWidgetItem(str(qp or "")))
-            self.qlight_table.setItem(i, 3, QTableWidgetItem(qr_disp))
+        if q_rows is not None:
+            self.qlight_table.setRowCount(0)
+            self.qlight_table.setRowCount(len(q_rows))
+            for i, r in enumerate(q_rows):
+                tid = r.get("id")
+                id_item2 = QTableWidgetItem(str(tid))
+                id_item2.setData(Qt.UserRole, tid)
+                qauth = r.get("qr_auth_id")
+                qr_disp = str(int(qauth)) if qauth is not None else ""
+                qh = (r.get("qlight_host") or "").strip()
+                qp = r.get("qlight_port")
+                self.qlight_table.setItem(i, 0, id_item2)
+                self.qlight_table.setItem(i, 1, QTableWidgetItem(qh))
+                self.qlight_table.setItem(i, 2, QTableWidgetItem(str(qp or "")))
+                self.qlight_table.setItem(i, 3, QTableWidgetItem(qr_disp))
 
     def load_data(self):
         self._load_auth_qr_list()
