@@ -3940,19 +3940,14 @@ class SettingsScreen(QWidget):
         self.btn_p_add.setObjectName("SettingsActPrimary")
         self.btn_p_add.setFixedHeight(40)
         self.btn_p_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_p_add.clicked.connect(self._printer_form_add)
-        self.btn_p_edit = QPushButton("수정")
-        self.btn_p_edit.setObjectName("SettingsActSecondary")
-        self.btn_p_edit.setFixedHeight(40)
-        self.btn_p_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_p_edit.clicked.connect(self._printer_form_save)
+        self.btn_p_add.setToolTip("서버에 저장합니다. 목록에서 행을 고치면 같은 버튼으로 수정 반영됩니다.")
+        self.btn_p_add.clicked.connect(self._printer_form_save)
         self.btn_p_del = QPushButton("삭제")
         self.btn_p_del.setObjectName("SettingsActDanger")
         self.btn_p_del.setFixedHeight(40)
         self.btn_p_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_p_del.clicked.connect(self._printer_form_delete)
         pbtn.addWidget(self.btn_p_add, 0)
-        pbtn.addWidget(self.btn_p_edit, 0)
         pbtn.addWidget(self.btn_p_del, 0)
         pf.addLayout(pbtn)
         lv.addWidget(panel_p, 0, Qt.AlignLeft)
@@ -4005,19 +4000,14 @@ class SettingsScreen(QWidget):
         self.btn_q_add.setObjectName("SettingsActPrimary")
         self.btn_q_add.setFixedHeight(40)
         self.btn_q_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_q_add.clicked.connect(self._qlight_form_add)
-        self.btn_q_edit = QPushButton("수정")
-        self.btn_q_edit.setObjectName("SettingsActSecondary")
-        self.btn_q_edit.setFixedHeight(40)
-        self.btn_q_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_q_edit.clicked.connect(self._qlight_form_save)
+        self.btn_q_add.setToolTip("서버에 저장합니다. 목록에서 행을 고치면 같은 버튼으로 수정 반영됩니다.")
+        self.btn_q_add.clicked.connect(self._qlight_form_save)
         self.btn_q_del = QPushButton("삭제")
         self.btn_q_del.setObjectName("SettingsActDanger")
         self.btn_q_del.setFixedHeight(40)
         self.btn_q_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_q_del.clicked.connect(self._qlight_form_delete)
         qbtn.addWidget(self.btn_q_add, 0)
-        qbtn.addWidget(self.btn_q_edit, 0)
         qbtn.addWidget(self.btn_q_del, 0)
         qf.addLayout(qbtn)
         rv.addWidget(panel_q, 0, Qt.AlignLeft)
@@ -4200,7 +4190,7 @@ class SettingsScreen(QWidget):
     def _printer_form_delete(self):
         tid = self._printer_editing_id
         if tid is None:
-            QMessageBox.warning(self, "선택", "삭제할 행을 선택하거나 추가 후 목록에서 선택하세요.")
+            QMessageBox.warning(self, "선택", "삭제할 행을 목록에서 선택하세요.")
             return
         if QMessageBox.question(
             self,
@@ -4285,7 +4275,7 @@ class SettingsScreen(QWidget):
     def _qlight_form_delete(self):
         tid = self._qlight_editing_id
         if tid is None:
-            QMessageBox.warning(self, "선택", "삭제할 행을 선택하세요.")
+            QMessageBox.warning(self, "선택", "삭제할 행을 경광등 목록에서 선택하세요.")
             return
         if QMessageBox.question(
             self,
