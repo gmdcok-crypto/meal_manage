@@ -102,6 +102,7 @@ class MealLogResponse(BaseModel):
     status: str
     path: str
     qr_terminal_id: Optional[int] = None
+    qr_auth_id: Optional[int] = None
     final_price: int
     is_void: bool
     void_reason: Optional[str] = None
@@ -271,6 +272,67 @@ class MealQrTerminalUpdate(BaseModel):
 
 
 class MealQrTerminalResponse(MealQrTerminalBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+# 프린터 / 경광등 각각 독립 테이블·API
+class MealPrinterTerminalBase(BaseModel):
+    name: str = ""
+    qr_auth_id: int
+    printer_host: str = ""
+    printer_port: int = 9100
+    printer_stored_image_number: int = 1
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class MealPrinterTerminalCreate(MealPrinterTerminalBase):
+    pass
+
+
+class MealPrinterTerminalUpdate(BaseModel):
+    name: Optional[str] = None
+    qr_auth_id: Optional[int] = None
+    printer_host: Optional[str] = None
+    printer_port: Optional[int] = None
+    printer_stored_image_number: Optional[int] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class MealPrinterTerminalResponse(MealPrinterTerminalBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class MealQlightTerminalBase(BaseModel):
+    name: str = ""
+    qr_auth_id: int
+    qlight_host: str = ""
+    qlight_port: int = 20000
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class MealQlightTerminalCreate(MealQlightTerminalBase):
+    pass
+
+
+class MealQlightTerminalUpdate(BaseModel):
+    name: Optional[str] = None
+    qr_auth_id: Optional[int] = None
+    qlight_host: Optional[str] = None
+    qlight_port: Optional[int] = None
+    is_active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class MealQlightTerminalResponse(MealQlightTerminalBase):
     id: int
 
     class Config:

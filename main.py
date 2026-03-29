@@ -11,7 +11,9 @@ from app.api import auth, meal, admin
 from app.core.database import engine, Base
 from app.core.schema_repair import ensure_meal_logs_columns
 from app.core.meal_qr_terminal_migration import run_meal_qr_terminal_migration
-from app.models.models import SystemSetting  # Base.metadata에 등록 (startup에서 create_all용)
+from app.core.split_legacy_terminals_migration import run_split_legacy_terminals_if_needed
+from app.core.database import SessionLocal
+from app.models.models import MealPrinterTerminal, MealQlightTerminal, SystemSetting  # noqa: F401 — create_all 메타데이터
 
 app = FastAPI(title="PWA Meal Auth System")
 
@@ -39,6 +41,15 @@ async def startup():
         _logger.info("meal_qr_terminals QR ID 마이그레이션 확인 완료")
     except Exception as e:
         _logger.warning("meal_qr_terminals 마이그레이션 실패: %s", e)
+    try:
+        _db = SessionLocal()
+        try:
+            run_split_legacy_terminals_if_needed(_db)
+        finally:
+            _db.close()
+        _logger.info("프린터·경광등 테이블 분리 이행 확인")
+    except Exception as e:
+        _logger.warning("프린터·경광등 테이블 분리 이행 실패: %s", e)
 
 # CORS 설정
 app.add_middleware(

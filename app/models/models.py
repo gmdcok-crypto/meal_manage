@@ -79,7 +79,7 @@ class MealPolicy(Base):
 
 
 class MealQrTerminal(Base):
-    """QR 스캔 구역별 프린터·경광등 매핑. 스캔 문자열은 system_settings device 의 allowed_qr_entries 에서 id 로 연결."""
+    """레거시 통합 터미널 행. 신규는 meal_printer_terminals / meal_qlight_terminals 사용. 이행 후 비어 있음."""
     __tablename__ = "meal_qr_terminals"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), default="")  # 표시용 (예: 1번 구역)
@@ -89,6 +89,33 @@ class MealQrTerminal(Base):
     printer_port = Column(Integer, default=9100)
     printer_stored_image_number = Column(Integer, default=1)
     qlight_enabled = Column(Boolean, default=False)
+    qlight_host = Column(String(100), default="")
+    qlight_port = Column(Integer, default=20000)
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MealPrinterTerminal(Base):
+    """QR ID별 식권 프린터(구역 독립). 스캔 문자열은 device.allowed_qr_entries 와 qr_auth_id 로 연결."""
+    __tablename__ = "meal_printer_terminals"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), default="")
+    qr_auth_id = Column(Integer, unique=True, nullable=False, index=True)
+    printer_host = Column(String(100), default="")
+    printer_port = Column(Integer, default=9100)
+    printer_stored_image_number = Column(Integer, default=1)
+    is_active = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class MealQlightTerminal(Base):
+    """QR ID별 경광등(프린터와 DB·API 분리)."""
+    __tablename__ = "meal_qlight_terminals"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), default="")
+    qr_auth_id = Column(Integer, unique=True, nullable=False, index=True)
     qlight_host = Column(String(100), default="")
     qlight_port = Column(Integer, default=20000)
     is_active = Column(Boolean, default=True)
@@ -106,6 +133,7 @@ class MealLog(Base):
 
     path = Column(String(20), default="PWA") # PWA, MANUAL, QR
     qr_terminal_id = Column(Integer, ForeignKey("meal_qr_terminals.id", ondelete="SET NULL"), nullable=True)
+    qr_auth_id = Column(Integer, nullable=True, index=True)  # 스캔 구역(인증 QR id). 통합 터미널 이행 후 로그 추적용
     final_price = Column(Integer, default=0) # Price snapshot at creation
     
     is_void = Column(Boolean, default=False)

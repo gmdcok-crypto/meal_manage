@@ -748,53 +748,96 @@ class APIClient:
         except Exception as e:
             return (False, str(e))
 
-    def list_qr_terminals(self):
-        """성공 시 list(빈 목록 포함). HTTP/파싱 실패 시 None — 호출부에서 목록 갱신 생략에 사용."""
+    def _json_list_or_none(self, r):
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        return data if isinstance(data, list) else None
+
+    def _detail_err(self, body: dict, fallback: str) -> str:
+        d = body.get("detail", fallback)
+        if isinstance(d, list):
+            return "; ".join(str(x) for x in d)
+        return str(d)
+
+    def list_printer_terminals(self):
         try:
-            r = self.client.get(f"{self.base_url}/terminals", headers=self._auth_headers())
-            if r.status_code != 200:
-                return None
-            data = r.json()
-            return data if isinstance(data, list) else None
+            r = self.client.get(f"{self.base_url}/printer-terminals", headers=self._auth_headers())
+            return self._json_list_or_none(r)
         except Exception:
             return None
 
-    def get_qr_terminal(self, terminal_id: int):
+    def list_qlight_terminals(self):
         try:
-            r = self.client.get(f"{self.base_url}/terminals/{terminal_id}", headers=self._auth_headers())
+            r = self.client.get(f"{self.base_url}/qlight-terminals", headers=self._auth_headers())
+            return self._json_list_or_none(r)
+        except Exception:
+            return None
+
+    def get_printer_terminal(self, tid: int):
+        try:
+            r = self.client.get(f"{self.base_url}/printer-terminals/{tid}", headers=self._auth_headers())
             return r.json() if r.status_code == 200 else None
         except Exception:
             return None
 
-    def create_qr_terminal(self, data: dict):
+    def get_qlight_terminal(self, tid: int):
         try:
-            r = self.client.post(f"{self.base_url}/terminals", json=data, headers=self._auth_headers())
+            r = self.client.get(f"{self.base_url}/qlight-terminals/{tid}", headers=self._auth_headers())
+            return r.json() if r.status_code == 200 else None
+        except Exception:
+            return None
+
+    def create_printer_terminal(self, data: dict):
+        try:
+            r = self.client.post(f"{self.base_url}/printer-terminals", json=data, headers=self._auth_headers())
             if r.status_code in (200, 201):
                 return (True, r.json())
             body = r.json() if r.text else {}
-            d = body.get("detail", "등록 실패")
-            if isinstance(d, list):
-                d = "; ".join(str(x) for x in d)
-            return (False, d)
+            return (False, self._detail_err(body, "등록 실패"))
         except Exception as e:
             return (False, str(e))
 
-    def update_qr_terminal(self, terminal_id: int, data: dict):
+    def update_printer_terminal(self, tid: int, data: dict):
         try:
-            r = self.client.put(f"{self.base_url}/terminals/{terminal_id}", json=data, headers=self._auth_headers())
+            r = self.client.put(f"{self.base_url}/printer-terminals/{tid}", json=data, headers=self._auth_headers())
             if r.status_code in (200, 201):
                 return (True, r.json())
             body = r.json() if r.text else {}
-            d = body.get("detail", "수정 실패")
-            if isinstance(d, list):
-                d = "; ".join(str(x) for x in d)
-            return (False, d)
+            return (False, self._detail_err(body, "수정 실패"))
         except Exception as e:
             return (False, str(e))
 
-    def delete_qr_terminal(self, terminal_id: int):
+    def delete_printer_terminal(self, tid: int):
         try:
-            r = self.client.delete(f"{self.base_url}/terminals/{terminal_id}", headers=self._auth_headers())
+            r = self.client.delete(f"{self.base_url}/printer-terminals/{tid}", headers=self._auth_headers())
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    def create_qlight_terminal(self, data: dict):
+        try:
+            r = self.client.post(f"{self.base_url}/qlight-terminals", json=data, headers=self._auth_headers())
+            if r.status_code in (200, 201):
+                return (True, r.json())
+            body = r.json() if r.text else {}
+            return (False, self._detail_err(body, "등록 실패"))
+        except Exception as e:
+            return (False, str(e))
+
+    def update_qlight_terminal(self, tid: int, data: dict):
+        try:
+            r = self.client.put(f"{self.base_url}/qlight-terminals/{tid}", json=data, headers=self._auth_headers())
+            if r.status_code in (200, 201):
+                return (True, r.json())
+            body = r.json() if r.text else {}
+            return (False, self._detail_err(body, "수정 실패"))
+        except Exception as e:
+            return (False, str(e))
+
+    def delete_qlight_terminal(self, tid: int):
+        try:
+            r = self.client.delete(f"{self.base_url}/qlight-terminals/{tid}", headers=self._auth_headers())
             return r.status_code == 200
         except Exception:
             return False
@@ -3396,184 +3439,8 @@ class AdminScreen(QWidget):
             QMessageBox.warning(self, "오류", "초기화에 실패했습니다.")
 
 
-QR_TERMINAL_DIALOG_QSS = """
-QDialog#QrTerminalEditDialog {
-    background-color: #0f172a;
-}
-QDialog#QrTerminalEditDialog QLabel {
-    color: #f8fafc;
-    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
-    font-weight: bold;
-    font-size: 17px;
-}
-QDialog#QrTerminalEditDialog QLineEdit, QDialog#QrTerminalEditDialog QSpinBox, QDialog#QrTerminalEditDialog QComboBox {
-    background-color: #1e293b;
-    border: 1px solid #475569;
-    border-radius: 8px;
-    color: #f8fafc;
-    padding: 8px 12px;
-    font-size: 16px;
-    font-weight: bold;
-    min-height: 36px;
-}
-QDialog#QrTerminalEditDialog QLineEdit:disabled, QDialog#QrTerminalEditDialog QSpinBox:disabled, QDialog#QrTerminalEditDialog QComboBox:disabled {
-    background-color: #111b2d;
-    color: #64748b;
-}
-QDialog#QrTerminalEditDialog QSpinBox::up-button, QDialog#QrTerminalEditDialog QSpinBox::down-button {
-    background-color: #334155;
-    width: 20px;
-    border: none;
-}
-QDialog#QrTerminalEditDialog QCheckBox {
-    color: #f8fafc;
-    font-weight: bold;
-    font-size: 16px;
-    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
-}
-QDialog#QrTerminalEditDialog QDialogButtonBox QPushButton {
-    background-color: #3b82f6;
-    color: white;
-    border-radius: 8px;
-    padding: 10px 20px;
-    font-weight: bold;
-    font-size: 16px;
-    min-height: 36px;
-    min-width: 80px;
-    font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
-}
-QDialog#QrTerminalEditDialog QDialogButtonBox QPushButton:hover {
-    background-color: #2563eb;
-}
-"""
-
-
-class QrTerminalEditDialog(QDialog):
-    """QR 터미널 추가/수정: 구역명, QR ID(인증 QR), 프린터·경광등."""
-    def __init__(self, parent, api, terminal_id=None):
-        super().__init__(parent)
-        self.setObjectName("QrTerminalEditDialog")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setStyleSheet(QR_TERMINAL_DIALOG_QSS)
-        self.api = api
-        self.terminal_id = terminal_id
-        self.setWindowTitle("QR 터미널 수정" if terminal_id else "QR 터미널 등록")
-        self.setMinimumWidth(480)
-        form = QFormLayout(self)
-        self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("예: 1번 구역")
-        form.addRow("표시 이름:", self.name_edit)
-        self.qr_auth_combo = QComboBox()
-        entries = []
-        if api:
-            ds = api.get_device_settings()
-            if isinstance(ds, dict):
-                for x in ds.get("allowed_qr_entries") or []:
-                    if isinstance(x, dict) and x.get("id") is not None:
-                        cid = int(x["id"])
-                        cc = str(x.get("code") or "").strip()
-                        if cc:
-                            entries.append((cid, cc))
-        entries.sort(key=lambda t: t[0])
-        self.qr_auth_combo.addItem("— 인증 QR ID 선택 —", None)
-        for cid, _cc in entries:
-            self.qr_auth_combo.addItem(str(cid), cid)
-        form.addRow("QR ID (인증 QR):", self.qr_auth_combo)
-
-        self.printer_enabled = QCheckBox("식권 프린터 사용")
-        form.addRow(self.printer_enabled)
-        self.printer_host = QLineEdit()
-        self.printer_host.setPlaceholderText("프린터 IP")
-        form.addRow("프린터 IP:", self.printer_host)
-        self.printer_port = QSpinBox()
-        self.printer_port.setRange(1, 65535)
-        self.printer_port.setValue(9100)
-        form.addRow("프린터 포트:", self.printer_port)
-
-        self.qlight_enabled = QCheckBox("경광등 사용")
-        form.addRow(self.qlight_enabled)
-        self.qlight_host = QLineEdit()
-        self.qlight_host.setPlaceholderText("경광등 IP")
-        form.addRow("경광등 IP:", self.qlight_host)
-        self.qlight_port = QSpinBox()
-        self.qlight_port.setRange(1, 65535)
-        self.qlight_port.setValue(20000)
-        form.addRow("경광등 포트:", self.qlight_port)
-
-        self.is_active = QCheckBox("사용")
-        self.is_active.setChecked(True)
-        form.addRow(self.is_active)
-
-        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        bb.accepted.connect(self._on_ok)
-        bb.rejected.connect(self.reject)
-        form.addRow(bb)
-
-        self.printer_enabled.stateChanged.connect(self._on_printer_toggled)
-        self.qlight_enabled.stateChanged.connect(self._on_qlight_toggled)
-        self._on_printer_toggled()
-        self._on_qlight_toggled()
-
-        if terminal_id and api:
-            d = api.get_qr_terminal(terminal_id)
-            if d:
-                self.name_edit.setText((d.get("name") or "").strip())
-                qid = d.get("qr_auth_id")
-                if qid is not None:
-                    idx = self.qr_auth_combo.findData(int(qid))
-                    if idx >= 0:
-                        self.qr_auth_combo.setCurrentIndex(idx)
-                self.printer_enabled.setChecked(bool(d.get("printer_enabled")))
-                self.printer_host.setText((d.get("printer_host") or "").strip())
-                self.printer_port.setValue(int(d.get("printer_port") or 9100))
-                self.qlight_enabled.setChecked(bool(d.get("qlight_enabled")))
-                self.qlight_host.setText((d.get("qlight_host") or "").strip())
-                self.qlight_port.setValue(int(d.get("qlight_port") or 20000))
-                self.is_active.setChecked(bool(d.get("is_active", True)))
-                self._on_printer_toggled()
-                self._on_qlight_toggled()
-
-    def _on_printer_toggled(self):
-        en = self.printer_enabled.isChecked()
-        self.printer_host.setEnabled(en)
-        self.printer_port.setEnabled(en)
-
-    def _on_qlight_toggled(self):
-        en = self.qlight_enabled.isChecked()
-        self.qlight_host.setEnabled(en)
-        self.qlight_port.setEnabled(en)
-
-    def _on_ok(self):
-        qid = self.qr_auth_combo.currentData()
-        if qid is None:
-            QMessageBox.warning(self, "입력 오류", "인증 QR 목록에서 QR ID를 선택하세요. (설정 탭에서 먼저 저장)")
-            return
-        qid = int(qid)
-        payload = {
-            "name": (self.name_edit.text() or "").strip(),
-            "qr_auth_id": qid,
-            "printer_enabled": self.printer_enabled.isChecked(),
-            "printer_host": (self.printer_host.text() or "").strip(),
-            "printer_port": self.printer_port.value(),
-            "printer_stored_image_number": 1,
-            "qlight_enabled": self.qlight_enabled.isChecked(),
-            "qlight_host": (self.qlight_host.text() or "").strip(),
-            "qlight_port": self.qlight_port.value(),
-            "is_active": self.is_active.isChecked(),
-        }
-        if self.terminal_id:
-            ok, err = self.api.update_qr_terminal(self.terminal_id, payload)
-        else:
-            payload["sort_order"] = 0
-            ok, err = self.api.create_qr_terminal(payload)
-        if ok:
-            self.accept()
-        else:
-            QMessageBox.warning(self, "오류", str(err or "저장 실패"))
-
-
 class SettingsScreen(QWidget):
-    """설정: 인증 QR(QR ID·스캔 문자열), QR 터미널(구역별 프린터·경광등)."""
+    """설정: 인증 QR(QR ID·스캔 문자열), 구역별 프린터·경광등(각각 별도 등록·삭제)."""
     def __init__(self, api, main_win):
         super().__init__()
         self.api = api
@@ -3940,14 +3807,21 @@ class SettingsScreen(QWidget):
         self.btn_p_add.setObjectName("SettingsActPrimary")
         self.btn_p_add.setFixedHeight(40)
         self.btn_p_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_p_add.setToolTip("서버에 저장합니다. 목록에서 행을 고치면 같은 버튼으로 수정 반영됩니다.")
-        self.btn_p_add.clicked.connect(self._printer_form_save)
+        self.btn_p_add.setToolTip("입력창을 비우고 새 프린터를 등록할 준비를 합니다.")
+        self.btn_p_add.clicked.connect(self._printer_form_add)
+        self.btn_p_save = QPushButton("저장")
+        self.btn_p_save.setObjectName("SettingsActSecondary")
+        self.btn_p_save.setFixedHeight(40)
+        self.btn_p_save.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_p_save.setToolTip("서버에 반영합니다. (신규 또는 목록에서 선택한 행 수정)")
+        self.btn_p_save.clicked.connect(self._printer_form_save)
         self.btn_p_del = QPushButton("삭제")
         self.btn_p_del.setObjectName("SettingsActDanger")
         self.btn_p_del.setFixedHeight(40)
         self.btn_p_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_p_del.clicked.connect(self._printer_form_delete)
         pbtn.addWidget(self.btn_p_add, 0)
+        pbtn.addWidget(self.btn_p_save, 0)
         pbtn.addWidget(self.btn_p_del, 0)
         pf.addLayout(pbtn)
         lv.addWidget(panel_p, 0, Qt.AlignLeft)
@@ -4000,14 +3874,21 @@ class SettingsScreen(QWidget):
         self.btn_q_add.setObjectName("SettingsActPrimary")
         self.btn_q_add.setFixedHeight(40)
         self.btn_q_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_q_add.setToolTip("서버에 저장합니다. 목록에서 행을 고치면 같은 버튼으로 수정 반영됩니다.")
-        self.btn_q_add.clicked.connect(self._qlight_form_save)
+        self.btn_q_add.setToolTip("입력창을 비우고 새 경광등을 등록할 준비를 합니다.")
+        self.btn_q_add.clicked.connect(self._qlight_form_add)
+        self.btn_q_save = QPushButton("저장")
+        self.btn_q_save.setObjectName("SettingsActSecondary")
+        self.btn_q_save.setFixedHeight(40)
+        self.btn_q_save.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_q_save.setToolTip("서버에 반영합니다. (신규 또는 목록에서 선택한 행 수정)")
+        self.btn_q_save.clicked.connect(self._qlight_form_save)
         self.btn_q_del = QPushButton("삭제")
         self.btn_q_del.setObjectName("SettingsActDanger")
         self.btn_q_del.setFixedHeight(40)
         self.btn_q_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_q_del.clicked.connect(self._qlight_form_delete)
         qbtn.addWidget(self.btn_q_add, 0)
+        qbtn.addWidget(self.btn_q_save, 0)
         qbtn.addWidget(self.btn_q_del, 0)
         qf.addLayout(qbtn)
         rv.addWidget(panel_q, 0, Qt.AlignLeft)
@@ -4020,10 +3901,24 @@ class SettingsScreen(QWidget):
         self._qlight_editing_id = None
         return wrap
 
-    def _find_terminal_by_qr_auth_id(self, qid: int):
+    def _find_printer_by_qr_auth_id(self, qid: int):
         if not self.api or not qid:
             return None
-        rows = self.api.list_qr_terminals()
+        rows = self.api.list_printer_terminals()
+        if rows is None:
+            return None
+        for row in rows:
+            try:
+                if int(row.get("qr_auth_id") or 0) == int(qid):
+                    return row
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _find_qlight_by_qr_auth_id(self, qid: int):
+        if not self.api or not qid:
+            return None
+        rows = self.api.list_qlight_terminals()
         if rows is None:
             return None
         for row in rows:
@@ -4044,7 +3939,7 @@ class SettingsScreen(QWidget):
             return
         tid = it.data(Qt.UserRole)
         self._printer_editing_id = tid
-        d = self.api.get_qr_terminal(tid) if self.api else None
+        d = self.api.get_printer_terminal(tid) if self.api else None
         if d:
             self.p_ip.setText((d.get("printer_host") or "").strip())
             self.p_port.setText(str(int(d.get("printer_port") or 9100)))
@@ -4080,7 +3975,7 @@ class SettingsScreen(QWidget):
             return
         tid = it.data(Qt.UserRole)
         self._qlight_editing_id = tid
-        d = self.api.get_qr_terminal(tid) if self.api else None
+        d = self.api.get_qlight_terminal(tid) if self.api else None
         if d:
             self.q_ip.setText((d.get("qlight_host") or "").strip())
             self.q_port.setText(str(int(d.get("qlight_port") or 20000)))
@@ -4135,34 +4030,29 @@ class SettingsScreen(QWidget):
         if port < 0:
             return
         if self._printer_editing_id is None:
-            existing = self._find_terminal_by_qr_auth_id(qid)
+            existing = self._find_printer_by_qr_auth_id(qid)
             if existing:
-                ok, err = self.api.update_qr_terminal(
+                ok, err = self.api.update_printer_terminal(
                     existing["id"],
                     {
                         "qr_auth_id": qid,
-                        "printer_enabled": True,
                         "printer_host": ip,
                         "printer_port": port,
                         "is_active": self.p_active.isChecked(),
                     },
                 )
-                msg = "같은 QR_ID 터미널에 프린터 정보를 반영했습니다." if ok else str(err or "저장 실패")
+                msg = "같은 QR_ID 프린터 정보를 반영했습니다." if ok else str(err or "저장 실패")
             else:
                 payload = {
                     "name": "",
                     "qr_auth_id": qid,
-                    "printer_enabled": True,
                     "printer_host": ip,
                     "printer_port": port,
                     "printer_stored_image_number": 1,
-                    "qlight_enabled": False,
-                    "qlight_host": "",
-                    "qlight_port": 20000,
                     "is_active": self.p_active.isChecked(),
                     "sort_order": 0,
                 }
-                ok, err = self.api.create_qr_terminal(payload)
+                ok, err = self.api.create_printer_terminal(payload)
                 msg = "등록되었습니다." if ok else str(err or "등록 실패")
             if ok:
                 QMessageBox.information(self, "완료", msg)
@@ -4171,11 +4061,10 @@ class SettingsScreen(QWidget):
             else:
                 QMessageBox.warning(self, "오류", msg)
             return
-        ok, err = self.api.update_qr_terminal(
+        ok, err = self.api.update_printer_terminal(
             self._printer_editing_id,
             {
                 "qr_auth_id": qid,
-                "printer_enabled": True,
                 "printer_host": ip,
                 "printer_port": port,
                 "is_active": self.p_active.isChecked(),
@@ -4195,12 +4084,12 @@ class SettingsScreen(QWidget):
         if QMessageBox.question(
             self,
             "삭제",
-            "이 터미널(ID %s)을 삭제하면 같은 QR_ID의 경광등 설정도 함께 삭제됩니다. 계속할까요?" % tid,
+            "이 프린터 등록(ID %s)을 삭제할까요? (경광등 등록은 그대로 둡니다.)" % tid,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         ) != QMessageBox.Yes:
             return
-        if self.api and self.api.delete_qr_terminal(tid):
+        if self.api and self.api.delete_printer_terminal(tid):
             QMessageBox.information(self, "완료", "삭제되었습니다.")
             self.refresh_terminals()
             self._printer_form_add()
@@ -4220,34 +4109,28 @@ class SettingsScreen(QWidget):
         if port < 0:
             return
         if self._qlight_editing_id is None:
-            existing = self._find_terminal_by_qr_auth_id(qid)
+            existing = self._find_qlight_by_qr_auth_id(qid)
             if existing:
-                ok, err = self.api.update_qr_terminal(
+                ok, err = self.api.update_qlight_terminal(
                     existing["id"],
                     {
                         "qr_auth_id": qid,
-                        "qlight_enabled": True,
                         "qlight_host": ip,
                         "qlight_port": port,
                         "is_active": self.q_active.isChecked(),
                     },
                 )
-                msg = "같은 QR_ID 터미널에 경광등 정보를 반영했습니다." if ok else str(err or "저장 실패")
+                msg = "같은 QR_ID 경광등 정보를 반영했습니다." if ok else str(err or "저장 실패")
             else:
                 payload = {
                     "name": "",
                     "qr_auth_id": qid,
-                    "printer_enabled": False,
-                    "printer_host": "",
-                    "printer_port": 9100,
-                    "printer_stored_image_number": 1,
-                    "qlight_enabled": True,
                     "qlight_host": ip,
                     "qlight_port": port,
                     "is_active": self.q_active.isChecked(),
                     "sort_order": 0,
                 }
-                ok, err = self.api.create_qr_terminal(payload)
+                ok, err = self.api.create_qlight_terminal(payload)
                 msg = "등록되었습니다." if ok else str(err or "등록 실패")
             if ok:
                 QMessageBox.information(self, "완료", msg)
@@ -4256,11 +4139,10 @@ class SettingsScreen(QWidget):
             else:
                 QMessageBox.warning(self, "오류", msg)
             return
-        ok, err = self.api.update_qr_terminal(
+        ok, err = self.api.update_qlight_terminal(
             self._qlight_editing_id,
             {
                 "qr_auth_id": qid,
-                "qlight_enabled": True,
                 "qlight_host": ip,
                 "qlight_port": port,
                 "is_active": self.q_active.isChecked(),
@@ -4280,12 +4162,12 @@ class SettingsScreen(QWidget):
         if QMessageBox.question(
             self,
             "삭제",
-            "이 터미널(ID %s)을 삭제하면 같은 QR_ID의 프린터 설정도 함께 삭제됩니다. 계속할까요?" % tid,
+            "이 경광등 등록(ID %s)을 삭제할까요? (프린터 등록은 그대로 둡니다.)" % tid,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         ) != QMessageBox.Yes:
             return
-        if self.api and self.api.delete_qr_terminal(tid):
+        if self.api and self.api.delete_qlight_terminal(tid):
             QMessageBox.information(self, "완료", "삭제되었습니다.")
             self.refresh_terminals()
             self._qlight_form_add()
@@ -4297,14 +4179,15 @@ class SettingsScreen(QWidget):
             self.printer_table.setRowCount(0)
             self.qlight_table.setRowCount(0)
             return
-        rows = self.api.list_qr_terminals()
-        if rows is None:
+        p_rows = self.api.list_printer_terminals()
+        q_rows = self.api.list_qlight_terminals()
+        if p_rows is None or q_rows is None:
             return
         self.printer_table.setRowCount(0)
         self.qlight_table.setRowCount(0)
-        self.printer_table.setRowCount(len(rows))
-        self.qlight_table.setRowCount(len(rows))
-        for i, r in enumerate(rows):
+        self.printer_table.setRowCount(len(p_rows))
+        self.qlight_table.setRowCount(len(q_rows))
+        for i, r in enumerate(p_rows):
             tid = r.get("id")
             id_item = QTableWidgetItem(str(tid))
             id_item.setData(Qt.UserRole, tid)
@@ -4313,17 +4196,21 @@ class SettingsScreen(QWidget):
             ph = (r.get("printer_host") or "").strip()
             pp = r.get("printer_port")
             self.printer_table.setItem(i, 0, id_item)
-            self.printer_table.setItem(i, 1, QTableWidgetItem(ph if r.get("printer_enabled") else ""))
-            self.printer_table.setItem(i, 2, QTableWidgetItem(str(pp or "") if r.get("printer_enabled") else ""))
+            self.printer_table.setItem(i, 1, QTableWidgetItem(ph))
+            self.printer_table.setItem(i, 2, QTableWidgetItem(str(pp or "")))
             self.printer_table.setItem(i, 3, QTableWidgetItem(qr_disp))
 
+        for i, r in enumerate(q_rows):
+            tid = r.get("id")
             id_item2 = QTableWidgetItem(str(tid))
             id_item2.setData(Qt.UserRole, tid)
+            qauth = r.get("qr_auth_id")
+            qr_disp = str(int(qauth)) if qauth is not None else ""
             qh = (r.get("qlight_host") or "").strip()
             qp = r.get("qlight_port")
             self.qlight_table.setItem(i, 0, id_item2)
-            self.qlight_table.setItem(i, 1, QTableWidgetItem(qh if r.get("qlight_enabled") else ""))
-            self.qlight_table.setItem(i, 2, QTableWidgetItem(str(qp or "") if r.get("qlight_enabled") else ""))
+            self.qlight_table.setItem(i, 1, QTableWidgetItem(qh))
+            self.qlight_table.setItem(i, 2, QTableWidgetItem(str(qp or "")))
             self.qlight_table.setItem(i, 3, QTableWidgetItem(qr_disp))
 
     def load_data(self):

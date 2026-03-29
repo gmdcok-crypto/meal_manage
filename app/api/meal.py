@@ -72,27 +72,29 @@ def process_qr_scan(
         return s.strip().replace("\ufeff", "").replace("\r", "").replace("\n", "").strip()
 
     from app.api.admin.settings import coalesce_allowed_qr_entries, get_device_settings_from_db
-    from app.api.admin.terminals import (
-        count_terminals,
-        find_terminal_by_qr,
+    from app.api.admin.hardware_terminals import (
+        auth_id_for_normalized_scan,
+        build_merged_device_payload,
+        has_binding_for_auth_id,
         legacy_device_payload_from_settings,
-        terminal_to_device_payload,
+        total_hardware_rows,
     )
 
     qr_val = _norm_qr(body.qr_data)
-    n_terminals = count_terminals(db)
+    n_hw = total_hardware_rows(db)
     qr_terminal_id = None
+    log_qr_auth_id = None
     device_payload = None
 
-    if n_terminals > 0:
-        # 터미널이 하나라도 있으면: 스캔 문자열이 인증 QR 목록의 code 와 일치하고, 해당 QR ID 를 쓰는 터미널이 있어야 함
+    if n_hw > 0:
+        # 프린터·경광등 등록이 하나라도 있으면: 스캔이 인증 QR 목록과 맞고, 해당 QR ID에 장비 행이 있어야 함
         if not qr_val:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QR 코드를 스캔해 주세요.")
-        terminal = find_terminal_by_qr(db, qr_val)
-        if not terminal:
+        aid = auth_id_for_normalized_scan(db, qr_val)
+        if aid is None or not has_binding_for_auth_id(db, aid):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
-        qr_terminal_id = terminal.id
-        device_payload = terminal_to_device_payload(terminal, matched_scan=qr_val)
+        log_qr_auth_id = aid
+        device_payload = build_merged_device_payload(db, aid, matched_scan=qr_val)
     else:
         # 레거시: 터미널 없음 — allowed_qr_entries 의 code 만 허용 (목록이 비어 있으면 검사 생략)
         device = get_device_settings_from_db(db)
@@ -136,6 +138,7 @@ def process_qr_scan(
         status="ARRIVED",
         path="QR",
         qr_terminal_id=qr_terminal_id,
+        qr_auth_id=log_qr_auth_id,
         final_price=policy.base_price,
         created_at=event_kst.replace(tzinfo=None)  # 한국 시간 로컬 시각 그대로 저장 (naive)
     )

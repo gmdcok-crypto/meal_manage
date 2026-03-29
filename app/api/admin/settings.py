@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.api.auth import get_current_admin
-from app.models.models import MealQrTerminal, SystemSetting
+from app.models.models import SystemSetting
 from app.schemas.schemas import AuthQrEntry, DeviceSettingsResponse, DeviceSettingsUpdate
 
 router = APIRouter()
@@ -119,13 +119,15 @@ def put_device_settings(
     current = get_device_settings_from_db(db)
     update = body.model_dump(exclude_unset=True)
     if "allowed_qr_entries" in update and update["allowed_qr_entries"] is not None:
+        from app.api.admin.hardware_terminals import qr_auth_ids_in_use
+
         raw_list = [
             AuthQrEntry.model_validate(x) if isinstance(x, dict) else x
             for x in update["allowed_qr_entries"]
         ]
         normalized = normalize_allowed_qr_entries(raw_list)
         new_ids = {e["id"] for e in normalized}
-        t_rows = db.execute(select(MealQrTerminal.qr_auth_id)).scalars().all()
+        t_rows = qr_auth_ids_in_use(db)
         for aid in t_rows:
             if aid is not None and aid not in new_ids:
                 raise HTTPException(

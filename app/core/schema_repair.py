@@ -49,6 +49,7 @@ def ensure_meal_logs_columns(engine: Engine) -> None:
             for ddl, label in (
                 ("ALTER TABLE meal_logs ADD COLUMN path VARCHAR(20) DEFAULT 'PWA'", "meal_logs.path"),
                 ("ALTER TABLE meal_logs ADD COLUMN qr_terminal_id INT NULL", "meal_logs.qr_terminal_id"),
+                ("ALTER TABLE meal_logs ADD COLUMN qr_auth_id INT NULL", "meal_logs.qr_auth_id"),
                 ("ALTER TABLE meal_logs ADD COLUMN final_price INT DEFAULT 0", "meal_logs.final_price"),
                 ("ALTER TABLE meal_logs ADD COLUMN is_void TINYINT(1) DEFAULT 0", "meal_logs.is_void"),
                 ("ALTER TABLE meal_logs ADD COLUMN void_reason VARCHAR(255) NULL", "meal_logs.void_reason"),
@@ -66,6 +67,10 @@ def ensure_meal_logs_columns(engine: Engine) -> None:
                 (
                     "ALTER TABLE meal_logs ADD COLUMN IF NOT EXISTS qr_terminal_id INTEGER NULL",
                     "meal_logs.qr_terminal_id",
+                ),
+                (
+                    "ALTER TABLE meal_logs ADD COLUMN IF NOT EXISTS qr_auth_id INTEGER NULL",
+                    "meal_logs.qr_auth_id",
                 ),
                 (
                     "ALTER TABLE meal_logs ADD COLUMN IF NOT EXISTS final_price INTEGER DEFAULT 0",
@@ -94,6 +99,7 @@ def ensure_meal_logs_columns(engine: Engine) -> None:
             for ddl, label in (
                 ("ALTER TABLE meal_logs ADD COLUMN path VARCHAR(20) DEFAULT 'PWA'", "meal_logs.path"),
                 ("ALTER TABLE meal_logs ADD COLUMN qr_terminal_id INTEGER NULL", "meal_logs.qr_terminal_id"),
+                ("ALTER TABLE meal_logs ADD COLUMN qr_auth_id INTEGER NULL", "meal_logs.qr_auth_id"),
                 ("ALTER TABLE meal_logs ADD COLUMN final_price INTEGER DEFAULT 0", "meal_logs.final_price"),
                 ("ALTER TABLE meal_logs ADD COLUMN is_void INTEGER DEFAULT 0", "meal_logs.is_void"),
                 ("ALTER TABLE meal_logs ADD COLUMN void_reason VARCHAR(255) NULL", "meal_logs.void_reason"),
