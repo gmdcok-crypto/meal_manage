@@ -83,8 +83,10 @@ def create_terminal(
     if qid <= 0:
         raise HTTPException(status_code=400, detail="QR ID는 1 이상이어야 합니다.")
     _validate_qr_auth_id(db, qid)
-    dup = db.execute(select(MealQrTerminal).where(MealQrTerminal.qr_auth_id == qid))
-    if dup.scalar_one_or_none():
+    dup = db.scalars(
+        select(MealQrTerminal).where(MealQrTerminal.qr_auth_id == qid)
+    ).first()
+    if dup:
         raise HTTPException(status_code=400, detail="이 QR ID는 이미 다른 터미널에 연결되어 있습니다.")
     row = MealQrTerminal(**body.model_dump())
     db.add(row)
@@ -123,13 +125,13 @@ def update_terminal(
         if qid <= 0:
             raise HTTPException(status_code=400, detail="QR ID는 1 이상이어야 합니다.")
         _validate_qr_auth_id(db, qid)
-        dup = db.execute(
+        dup = db.scalars(
             select(MealQrTerminal).where(
                 MealQrTerminal.qr_auth_id == qid,
                 MealQrTerminal.id != terminal_id,
             )
-        )
-        if dup.scalar_one_or_none():
+        ).first()
+        if dup:
             raise HTTPException(status_code=400, detail="이 QR ID는 이미 다른 터미널에 연결되어 있습니다.")
     for k, v in data.items():
         setattr(row, k, v)

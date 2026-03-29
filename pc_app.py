@@ -749,11 +749,15 @@ class APIClient:
             return (False, str(e))
 
     def list_qr_terminals(self):
+        """성공 시 list(빈 목록 포함). HTTP/파싱 실패 시 None — 호출부에서 목록 갱신 생략에 사용."""
         try:
             r = self.client.get(f"{self.base_url}/terminals", headers=self._auth_headers())
-            return r.json() if r.status_code == 200 else []
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            return data if isinstance(data, list) else None
         except Exception:
-            return []
+            return None
 
     def get_qr_terminal(self, terminal_id: int):
         try:
@@ -765,20 +769,26 @@ class APIClient:
     def create_qr_terminal(self, data: dict):
         try:
             r = self.client.post(f"{self.base_url}/terminals", json=data, headers=self._auth_headers())
-            if r.status_code == 200:
+            if r.status_code in (200, 201):
                 return (True, r.json())
             body = r.json() if r.text else {}
-            return (False, body.get("detail", "등록 실패"))
+            d = body.get("detail", "등록 실패")
+            if isinstance(d, list):
+                d = "; ".join(str(x) for x in d)
+            return (False, d)
         except Exception as e:
             return (False, str(e))
 
     def update_qr_terminal(self, terminal_id: int, data: dict):
         try:
             r = self.client.put(f"{self.base_url}/terminals/{terminal_id}", json=data, headers=self._auth_headers())
-            if r.status_code == 200:
+            if r.status_code in (200, 201):
                 return (True, r.json())
             body = r.json() if r.text else {}
-            return (False, body.get("detail", "수정 실패"))
+            d = body.get("detail", "수정 실패")
+            if isinstance(d, list):
+                d = "; ".join(str(x) for x in d)
+            return (False, d)
         except Exception as e:
             return (False, str(e))
 
@@ -3466,8 +3476,8 @@ class QrTerminalEditDialog(QDialog):
                             entries.append((cid, cc))
         entries.sort(key=lambda t: t[0])
         self.qr_auth_combo.addItem("— 인증 QR ID 선택 —", None)
-        for cid, cc in entries:
-            self.qr_auth_combo.addItem("%s — %s" % (cid, cc), cid)
+        for cid, _cc in entries:
+            self.qr_auth_combo.addItem(str(cid), cid)
         form.addRow("QR ID (인증 QR):", self.qr_auth_combo)
 
         self.printer_enabled = QCheckBox("식권 프린터 사용")
@@ -3601,25 +3611,16 @@ class SettingsScreen(QWidget):
         header.setObjectName("HeaderTitle")
         layout.addWidget(header)
 
-        hint = QLabel(
-            "「인증 QR」에서 QR ID와 PWA 스캔 문자열(전체 일치)을 등록한 뒤, 아래 프린터·경광등 표에서 각 줄에 연결할 QR ID를 선택합니다.\n"
-            "터미널이 하나도 없으면 서버는 인증 QR 목록만으로 스캔 문자열을 검사하고 기본 장치 설정을 씁니다."
-        )
-        hint.setWordWrap(True)
-        hint.setStyleSheet("color: #94a3b8; font-size: 14px; background-color: transparent;")
-        layout.addWidget(hint)
-
-        inner.setMinimumWidth(1000)
-        _st_adj = _settings_cm_to_px(5.0)
-        self._st_table_min_w = max(220, 420 - _st_adj)
-        self._st_panel_w = 300 + _st_adj
-        self._st_terminal_table_h = 110  # 프린터·경광등 테이블 세로 (구역 목록 + 인증 QR 섹션 확보)
+        self._st_terminal_table_h = 110  # 인증 QR 등 기타 테이블 최소 세로
+        self._st_pq_visible_rows = 4  # 식권 프린터·경광등 테이블 표시 행 수
+        # ID(가변)+IP200+포트100+QR_ID(Stretch) + 프레임
+        self._st_pq_table_w = 448
+        self._st_pq_row_spacing = 8  # 경광등 열 ↔ 프린터 열 간격 (인증 QR 줄 총폭 계산에 동일 적용)
+        inner.setMinimumWidth(max(880, self._st_pq_table_w * 2 + self._st_pq_row_spacing + 40))
 
         layout.addWidget(self._build_auth_qr_section())
         layout.addSpacing(16)
-        layout.addWidget(self._build_printer_section())
-        layout.addSpacing(24)
-        layout.addWidget(self._build_qlight_section())
+        layout.addWidget(self._build_printer_qlight_combined())
         layout.addStretch()
 
         scroll.setWidget(inner)
@@ -3653,16 +3654,15 @@ class SettingsScreen(QWidget):
         title = QLabel("인증 QR (QR ID · 스캔 문자열)")
         title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
         v.addWidget(title)
-        sub = QLabel(
-            "각 행의 QR ID는 프린터·경광등 등록에서 선택합니다. 스캔 문자열은 PWA가 읽은 값과 전체 일치해야 합니다.\n"
-            "터미널이 있으면: 스캔값이 목록의 문자열과 일치하고, 그 QR ID에 연결된 터미널이 있을 때만 인증됩니다.\n"
-            "터미널이 없으면: 목록이 비어 있지 않을 때만 위 문자열들로 스캔을 검사합니다."
-        )
-        sub.setWordWrap(True)
-        sub.setStyleSheet("color: #94a3b8; font-size: 14px; background-color: transparent;")
-        v.addWidget(sub)
 
-        row = QHBoxLayout()
+        # 테이블·입력창 폭 = 프린터·경광등과 동일(_st_pq_table_w). 줄 총폭 = 경광등+간격+프린터 열.
+        auth_row_wrap = QWidget()
+        _auth_row_w = self._st_pq_table_w * 2 + self._st_pq_row_spacing
+        auth_row_wrap.setFixedWidth(_auth_row_w)
+        row = QHBoxLayout(auth_row_wrap)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+
         self.auth_qr_table = QTableWidget(0, 2)
         self.auth_qr_table.setHorizontalHeaderLabels(["QR_ID", "스캔 문자열 (전체 일치)"])
         setup_standard_table(self.auth_qr_table)
@@ -3670,41 +3670,52 @@ class SettingsScreen(QWidget):
         self.auth_qr_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.auth_qr_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.auth_qr_table.setMinimumHeight(self._st_terminal_table_h)
-        self.auth_qr_table.setMinimumWidth(max(360, self._st_table_min_w))
+        self.auth_qr_table.setFixedWidth(self._st_pq_table_w)
+        self.auth_qr_table.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
         self.auth_qr_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        row.addWidget(self.auth_qr_table, 3)
+        self.auth_qr_table.itemSelectionChanged.connect(self._on_auth_qr_row_selected)
+        row.addWidget(self.auth_qr_table, 0, Qt.AlignTop)
 
         panel = QFrame()
         panel.setObjectName("StatCard")
-        panel.setFixedWidth(self._st_panel_w)
+        panel.setFixedWidth(self._st_pq_table_w)
         pf = QVBoxLayout(panel)
         pf.setSpacing(10)
-        pf.addWidget(self._settings_form_label("스캔 문자열 추가 (QR_ID 자동 부여)"))
         self.auth_qr_input = QLineEdit()
         self.auth_qr_input.setPlaceholderText("예: blue_meal (PWA 스캔과 동일)")
         pf.addWidget(self.auth_qr_input)
-        self.btn_auth_qr_add = QPushButton("목록에 추가")
+        auth_btn = QHBoxLayout()
+        auth_btn.setSpacing(8)
+        self.btn_auth_qr_add = QPushButton("추가")
         self.btn_auth_qr_add.setObjectName("SettingsActPrimary")
         self.btn_auth_qr_add.setFixedHeight(40)
         self.btn_auth_qr_add.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_auth_qr_add.clicked.connect(self._on_auth_qr_add)
-        pf.addWidget(self.btn_auth_qr_add)
-        self.btn_auth_qr_del = QPushButton("선택 삭제")
+        auth_btn.addWidget(self.btn_auth_qr_add)
+        self.btn_auth_qr_edit = QPushButton("수정")
+        self.btn_auth_qr_edit.setObjectName("SettingsActSecondary")
+        self.btn_auth_qr_edit.setFixedHeight(40)
+        self.btn_auth_qr_edit.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_auth_qr_edit.clicked.connect(self._on_auth_qr_edit)
+        auth_btn.addWidget(self.btn_auth_qr_edit)
+        self.btn_auth_qr_del = QPushButton("삭제")
         self.btn_auth_qr_del.setObjectName("SettingsActDanger")
         self.btn_auth_qr_del.setFixedHeight(40)
         self.btn_auth_qr_del.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.btn_auth_qr_del.clicked.connect(self._on_auth_qr_remove)
-        pf.addWidget(self.btn_auth_qr_del)
-        self.btn_auth_qr_save = QPushButton("서버에 저장")
-        self.btn_auth_qr_save.setObjectName("SettingsActSecondary")
-        self.btn_auth_qr_save.setFixedHeight(40)
-        self.btn_auth_qr_save.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.btn_auth_qr_save.clicked.connect(self._on_auth_qr_save)
-        pf.addWidget(self.btn_auth_qr_save)
-        pf.addStretch()
-        row.addWidget(panel, 1)
-        v.addLayout(row)
+        auth_btn.addWidget(self.btn_auth_qr_del)
+        pf.addLayout(auth_btn)
+        row.addWidget(panel, 0, Qt.AlignTop)
+        v.addWidget(auth_row_wrap, 0, Qt.AlignLeft)
         return wrap
+
+    def _on_auth_qr_row_selected(self):
+        r = self.auth_qr_table.currentRow()
+        if r < 0:
+            self.auth_qr_input.clear()
+            return
+        it1 = self.auth_qr_table.item(r, 1)
+        self.auth_qr_input.setText((it1.text() if it1 else "").strip())
 
     def _next_auth_qr_table_id(self):
         m = 0
@@ -3746,8 +3757,8 @@ class SettingsScreen(QWidget):
             cb.blockSignals(True)
             cb.clear()
             cb.addItem("— 선택 —", None)
-            for eid, cc in opts:
-                cb.addItem("%s — %s" % (eid, cc), eid)
+            for eid, _cc in opts:
+                cb.addItem(str(eid), eid)
             cb.blockSignals(False)
             if cur is not None:
                 idx = cb.findData(cur)
@@ -3809,6 +3820,28 @@ class SettingsScreen(QWidget):
         self.auth_qr_table.setItem(r, 0, id_item)
         self.auth_qr_table.setItem(r, 1, QTableWidgetItem(t))
         self.auth_qr_input.clear()
+        self._auth_qr_push_server(quiet=True)
+
+    def _on_auth_qr_edit(self):
+        """선택 행의 스캔 문자열을 입력창 내용으로 바꾼 뒤 서버에 반영합니다."""
+        r = self.auth_qr_table.currentRow()
+        if r < 0:
+            QMessageBox.warning(self, "선택", "수정할 행을 선택하세요.")
+            return
+        t = (self.auth_qr_input.text() or "").strip()
+        if not t:
+            QMessageBox.warning(self, "입력", "스캔 문자열을 입력하세요.")
+            return
+        for i in range(self.auth_qr_table.rowCount()):
+            if i == r:
+                continue
+            it1 = self.auth_qr_table.item(i, 1)
+            if it1 and (it1.text() or "").strip() == t:
+                QMessageBox.warning(self, "입력", "같은 스캔 문자열이 이미 있습니다.")
+                return
+        self.auth_qr_table.setItem(r, 1, QTableWidgetItem(t))
+        self.auth_qr_input.clear()
+        self._auth_qr_push_server(quiet=True)
 
     def _on_auth_qr_remove(self):
         r = self.auth_qr_table.currentRow()
@@ -3816,47 +3849,67 @@ class SettingsScreen(QWidget):
             QMessageBox.warning(self, "선택", "삭제할 행을 선택하세요.")
             return
         self.auth_qr_table.removeRow(r)
+        self._auth_qr_push_server(quiet=True)
 
-    def _on_auth_qr_save(self):
+    def _auth_qr_push_server(self, quiet=True):
+        """인증 QR 목록을 서버에 저장. 실패 시 목록을 서버 기준으로 다시 불러옵니다."""
         if not self.api:
-            return
+            return False
         lst = self._auth_qr_rows_payload()
         ok, msg = self.api.put_device_settings({"allowed_qr_entries": lst})
         if ok:
-            QMessageBox.information(self, "완료", "인증 QR 목록을 저장했습니다.")
+            if not quiet:
+                QMessageBox.information(self, "완료", "인증 QR 목록을 저장했습니다.")
             self._load_auth_qr_list()
-        else:
-            QMessageBox.warning(self, "오류", str(msg or "저장 실패"))
+            return True
+        QMessageBox.warning(self, "오류", str(msg or "저장 실패"))
+        self._load_auth_qr_list()
+        return False
 
-    def _build_printer_section(self):
-        """식권 프린터: 테이블(ID, IP, 포트, QR_ID) + 우측 입력 + 추가/수정/삭제."""
+    def _configure_settings_pq_table(self, table: QTableWidget):
+        """ID·IP·포트 폭 고정, QR_ID 열은 테이블 오른쪽 끝까지 확장. 높이=4행, 가로·세로 스크롤바 숨김."""
+        setup_standard_table(table)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.Fixed)
+        table.setColumnWidth(1, 200)
+        hdr.setSectionResizeMode(2, QHeaderView.Fixed)
+        table.setColumnWidth(2, 100)
+        hdr.setSectionResizeMode(3, QHeaderView.Stretch)
+        table.setFixedWidth(self._st_pq_table_w)
+        rh = table.verticalHeader().defaultSectionSize()
+        hh = 40
+        table.setFixedHeight(hh + self._st_pq_visible_rows * rh)
+        table.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+    def _build_printer_qlight_combined(self):
+        """한 줄: [경광등·테이블·입력] | [프린터·테이블·입력]. 테이블·입력 폭 동일(_st_pq_table_w)."""
         wrap = QWidget()
         v = QVBoxLayout(wrap)
-        v.setSpacing(8)
-        title = QLabel("식권 프린터 등록")
-        title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
-        v.addWidget(title)
-
+        v.setContentsMargins(0, 0, 0, 0)
         row = QHBoxLayout()
+        row.setSpacing(self._st_pq_row_spacing)
+
+        left_blk = QWidget()
+        lv = QVBoxLayout(left_blk)
+        lv.setContentsMargins(0, 0, 0, 0)
+        lv.setSpacing(8)
+        t_pr = QLabel("식권 프린터 등록")
+        t_pr.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
+        lv.addWidget(t_pr)
+
         self.printer_table = QTableWidget(0, 4)
         self.printer_table.setHorizontalHeaderLabels(["ID", "IP", "포트", "QR_ID"])
-        setup_standard_table(self.printer_table)
-        self.printer_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.printer_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
-        self.printer_table.setColumnWidth(1, 150)
-        self.printer_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.printer_table.setColumnWidth(2, 100)
-        self.printer_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-        self.printer_table.setColumnWidth(3, 100)
-        self.printer_table.setMinimumHeight(self._st_terminal_table_h)
-        self.printer_table.setMinimumWidth(self._st_table_min_w)
+        self._configure_settings_pq_table(self.printer_table)
         self.printer_table.itemSelectionChanged.connect(self._on_printer_row_selected)
-        row.addWidget(self.printer_table, 3)
+        lv.addWidget(self.printer_table, 0, Qt.AlignLeft)
 
-        panel = QFrame()
-        panel.setObjectName("StatCard")
-        panel.setFixedWidth(self._st_panel_w)
-        pf = QVBoxLayout(panel)
+        panel_p = QFrame()
+        panel_p.setObjectName("StatCard")
+        panel_p.setFixedWidth(self._st_pq_table_w)
+        pf = QVBoxLayout(panel_p)
         pf.setSpacing(10)
         pf.addWidget(self._settings_form_label("IP"))
         self.p_ip = QLineEdit()
@@ -3874,7 +3927,7 @@ class SettingsScreen(QWidget):
         row_pq.addWidget(self._settings_form_label("QR_ID"))
         self.p_qr_cb = QComboBox()
         self.p_qr_cb.addItem("— 선택 —", None)
-        self.p_qr_cb.setMinimumWidth(100)
+        self.p_qr_cb.setMinimumWidth(56)
         row_pq.addWidget(self.p_qr_cb, 1)
         pf.addLayout(row_pq)
         self.p_active = QCheckBox("사용 (스캔 인증)")
@@ -3901,43 +3954,27 @@ class SettingsScreen(QWidget):
         pbtn.addWidget(self.btn_p_add, 0)
         pbtn.addWidget(self.btn_p_edit, 0)
         pbtn.addWidget(self.btn_p_del, 0)
-        pbtn.addStretch(1)
         pf.addLayout(pbtn)
-        pf.addStretch()
-        row.addWidget(panel, 1)
-        v.addLayout(row)
-        self._printer_editing_id = None
-        return wrap
+        lv.addWidget(panel_p, 0, Qt.AlignLeft)
 
-    def _build_qlight_section(self):
-        """경광등: 테이블 + 우측 입력 + 추가/수정/삭제."""
-        wrap = QWidget()
-        v = QVBoxLayout(wrap)
-        v.setSpacing(8)
-        title = QLabel("경광등 등록")
-        title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
-        v.addWidget(title)
+        right_blk = QWidget()
+        rv = QVBoxLayout(right_blk)
+        rv.setContentsMargins(0, 0, 0, 0)
+        rv.setSpacing(8)
+        t_ql = QLabel("경광등 등록")
+        t_ql.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; background-color: transparent;")
+        rv.addWidget(t_ql)
 
-        row = QHBoxLayout()
         self.qlight_table = QTableWidget(0, 4)
         self.qlight_table.setHorizontalHeaderLabels(["ID", "IP", "포트", "QR_ID"])
-        setup_standard_table(self.qlight_table)
-        self.qlight_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        self.qlight_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
-        self.qlight_table.setColumnWidth(1, 150)
-        self.qlight_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.qlight_table.setColumnWidth(2, 100)
-        self.qlight_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Fixed)
-        self.qlight_table.setColumnWidth(3, 100)
-        self.qlight_table.setMinimumHeight(self._st_terminal_table_h)
-        self.qlight_table.setMinimumWidth(self._st_table_min_w)
+        self._configure_settings_pq_table(self.qlight_table)
         self.qlight_table.itemSelectionChanged.connect(self._on_qlight_row_selected)
-        row.addWidget(self.qlight_table, 3)
+        rv.addWidget(self.qlight_table, 0, Qt.AlignLeft)
 
-        panel = QFrame()
-        panel.setObjectName("StatCard")
-        panel.setFixedWidth(self._st_panel_w)
-        qf = QVBoxLayout(panel)
+        panel_q = QFrame()
+        panel_q.setObjectName("StatCard")
+        panel_q.setFixedWidth(self._st_pq_table_w)
+        qf = QVBoxLayout(panel_q)
         qf.setSpacing(10)
         qf.addWidget(self._settings_form_label("IP"))
         self.q_ip = QLineEdit()
@@ -3955,7 +3992,7 @@ class SettingsScreen(QWidget):
         row_qq.addWidget(self._settings_form_label("QR_ID"))
         self.q_qr_cb = QComboBox()
         self.q_qr_cb.addItem("— 선택 —", None)
-        self.q_qr_cb.setMinimumWidth(100)
+        self.q_qr_cb.setMinimumWidth(56)
         row_qq.addWidget(self.q_qr_cb, 1)
         qf.addLayout(row_qq)
         self.q_active = QCheckBox("사용 (스캔 인증)")
@@ -3982,11 +4019,14 @@ class SettingsScreen(QWidget):
         qbtn.addWidget(self.btn_q_add, 0)
         qbtn.addWidget(self.btn_q_edit, 0)
         qbtn.addWidget(self.btn_q_del, 0)
-        qbtn.addStretch(1)
         qf.addLayout(qbtn)
-        qf.addStretch()
-        row.addWidget(panel, 1)
+        rv.addWidget(panel_q, 0, Qt.AlignLeft)
+        # 경광등을 왼쪽, 프린터를 오른쪽 (한 줄에서 왼쪽부터 배치)
+        row.addWidget(right_blk, 0)
+        row.addWidget(left_blk, 0)
+
         v.addLayout(row)
+        self._printer_editing_id = None
         self._qlight_editing_id = None
         return wrap
 
@@ -3994,7 +4034,7 @@ class SettingsScreen(QWidget):
         if not self.api or not qid:
             return None
         rows = self.api.list_qr_terminals()
-        if not isinstance(rows, list):
+        if rows is None:
             return None
         for row in rows:
             try:
@@ -4014,23 +4054,31 @@ class SettingsScreen(QWidget):
             return
         tid = it.data(Qt.UserRole)
         self._printer_editing_id = tid
-        if not self.api:
-            return
-        d = self.api.get_qr_terminal(tid)
-        if not d:
-            return
-        self.p_ip.setText((d.get("printer_host") or "").strip())
-        self.p_port.setText(str(int(d.get("printer_port") or 9100)))
-        qid = d.get("qr_auth_id")
-        if qid is not None:
-            idx = self.p_qr_cb.findData(int(qid))
-            if idx >= 0:
-                self.p_qr_cb.setCurrentIndex(idx)
+        d = self.api.get_qr_terminal(tid) if self.api else None
+        if d:
+            self.p_ip.setText((d.get("printer_host") or "").strip())
+            self.p_port.setText(str(int(d.get("printer_port") or 9100)))
+            qid = d.get("qr_auth_id")
+            if qid is not None:
+                idx = self.p_qr_cb.findData(int(qid))
+                self.p_qr_cb.setCurrentIndex(idx if idx >= 0 else 0)
             else:
                 self.p_qr_cb.setCurrentIndex(0)
+            self.p_active.setChecked(bool(d.get("is_active", True)))
+            return
+        i1 = self.printer_table.item(r, 1)
+        i2 = self.printer_table.item(r, 2)
+        i3 = self.printer_table.item(r, 3)
+        self.p_ip.setText((i1.text() if i1 else "").strip())
+        pt = (i2.text() if i2 else "").strip()
+        self.p_port.setText(pt if pt else "9100")
+        qt = (i3.text() if i3 else "").strip()
+        if qt.isdigit():
+            idx = self.p_qr_cb.findData(int(qt))
+            self.p_qr_cb.setCurrentIndex(idx if idx >= 0 else 0)
         else:
             self.p_qr_cb.setCurrentIndex(0)
-        self.p_active.setChecked(bool(d.get("is_active", True)))
+        self.p_active.setChecked(True)
 
     def _on_qlight_row_selected(self):
         r = self.qlight_table.currentRow()
@@ -4042,23 +4090,31 @@ class SettingsScreen(QWidget):
             return
         tid = it.data(Qt.UserRole)
         self._qlight_editing_id = tid
-        if not self.api:
-            return
-        d = self.api.get_qr_terminal(tid)
-        if not d:
-            return
-        self.q_ip.setText((d.get("qlight_host") or "").strip())
-        self.q_port.setText(str(int(d.get("qlight_port") or 20000)))
-        qid = d.get("qr_auth_id")
-        if qid is not None:
-            idx = self.q_qr_cb.findData(int(qid))
-            if idx >= 0:
-                self.q_qr_cb.setCurrentIndex(idx)
+        d = self.api.get_qr_terminal(tid) if self.api else None
+        if d:
+            self.q_ip.setText((d.get("qlight_host") or "").strip())
+            self.q_port.setText(str(int(d.get("qlight_port") or 20000)))
+            qid = d.get("qr_auth_id")
+            if qid is not None:
+                idx = self.q_qr_cb.findData(int(qid))
+                self.q_qr_cb.setCurrentIndex(idx if idx >= 0 else 0)
             else:
                 self.q_qr_cb.setCurrentIndex(0)
+            self.q_active.setChecked(bool(d.get("is_active", True)))
+            return
+        i1 = self.qlight_table.item(r, 1)
+        i2 = self.qlight_table.item(r, 2)
+        i3 = self.qlight_table.item(r, 3)
+        self.q_ip.setText((i1.text() if i1 else "").strip())
+        pt = (i2.text() if i2 else "").strip()
+        self.q_port.setText(pt if pt else "20000")
+        qt = (i3.text() if i3 else "").strip()
+        if qt.isdigit():
+            idx = self.q_qr_cb.findData(int(qt))
+            self.q_qr_cb.setCurrentIndex(idx if idx >= 0 else 0)
         else:
             self.q_qr_cb.setCurrentIndex(0)
-        self.q_active.setChecked(bool(d.get("is_active", True)))
+        self.q_active.setChecked(True)
 
     def _printer_form_add(self):
         self.printer_table.clearSelection()
@@ -4247,13 +4303,15 @@ class SettingsScreen(QWidget):
             QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
 
     def refresh_terminals(self):
-        self.printer_table.setRowCount(0)
-        self.qlight_table.setRowCount(0)
         if not self.api:
+            self.printer_table.setRowCount(0)
+            self.qlight_table.setRowCount(0)
             return
         rows = self.api.list_qr_terminals()
-        if not isinstance(rows, list):
+        if rows is None:
             return
+        self.printer_table.setRowCount(0)
+        self.qlight_table.setRowCount(0)
         self.printer_table.setRowCount(len(rows))
         self.qlight_table.setRowCount(len(rows))
         for i, r in enumerate(rows):
