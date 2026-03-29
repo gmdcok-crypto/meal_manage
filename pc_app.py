@@ -4017,6 +4017,48 @@ class SettingsScreen(QWidget):
         self.q_qr_cb.setCurrentIndex(0)
         self.q_active.setChecked(True)
 
+    def _settings_norm_ip(self, s) -> str:
+        return (s or "").strip()
+
+    def _duplicate_ip_message(
+        self,
+        ip: str,
+        *,
+        exclude_printer_id=None,
+        exclude_qlight_id=None,
+    ):
+        """다른 프린터/경광등 행에 동일 IP가 있으면 안내 문구, 없으면 None."""
+        ip = self._settings_norm_ip(ip)
+        if not ip or not self.api:
+            return None
+        prow = self.api.list_printer_terminals()
+        qrow = self.api.list_qlight_terminals()
+        if prow is None and qrow is None:
+            return None
+        if prow:
+            for r in prow:
+                rid = r.get("id")
+                if exclude_printer_id is not None and rid == exclude_printer_id:
+                    continue
+                if self._settings_norm_ip(r.get("printer_host")) == ip:
+                    return (
+                        "이미 등록된 IP입니다.\n\n"
+                        "프린터 등록(ID %s)에서 같은 IP를 사용 중입니다.\n"
+                        "IP를 다시 확인해 주세요." % rid
+                    )
+        if qrow:
+            for r in qrow:
+                rid = r.get("id")
+                if exclude_qlight_id is not None and rid == exclude_qlight_id:
+                    continue
+                if self._settings_norm_ip(r.get("qlight_host")) == ip:
+                    return (
+                        "이미 등록된 IP입니다.\n\n"
+                        "경광등 등록(ID %s)에서 같은 IP를 사용 중입니다.\n"
+                        "IP를 다시 확인해 주세요." % rid
+                    )
+        return None
+
     def _printer_form_save(self):
         if not self.api:
             return
@@ -4028,6 +4070,30 @@ class SettingsScreen(QWidget):
         ip = (self.p_ip.text() or "").strip()
         port = self._settings_parse_port(self.p_port)
         if port < 0:
+            return
+        if not ip:
+            QMessageBox.warning(self, "입력", "프린터 IP를 입력하세요.")
+            return
+        exclude_pid = self._printer_editing_id
+        if exclude_pid is None:
+            ex = self._find_printer_by_qr_auth_id(qid)
+            if ex:
+                exclude_pid = ex.get("id")
+        dup_msg = self._duplicate_ip_message(ip, exclude_printer_id=exclude_pid)
+        if dup_msg:
+            QMessageBox.warning(self, "IP 중복", dup_msg)
+            QMessageBox.information(self, "IP 확인", "입력한 IP가 올바른지 확인한 뒤 다시 저장해 주세요.")
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "IP 확인",
+                "다음 주소로 프린터를 저장할까요?\n\nIP: %s\n포트: %s" % (ip, port),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            != QMessageBox.Yes
+        ):
             return
         if self._printer_editing_id is None:
             existing = self._find_printer_by_qr_auth_id(qid)
@@ -4107,6 +4173,30 @@ class SettingsScreen(QWidget):
         ip = (self.q_ip.text() or "").strip()
         port = self._settings_parse_port(self.q_port)
         if port < 0:
+            return
+        if not ip:
+            QMessageBox.warning(self, "입력", "경광등 IP를 입력하세요.")
+            return
+        exclude_qid = self._qlight_editing_id
+        if exclude_qid is None:
+            ex = self._find_qlight_by_qr_auth_id(qid)
+            if ex:
+                exclude_qid = ex.get("id")
+        dup_msg = self._duplicate_ip_message(ip, exclude_qlight_id=exclude_qid)
+        if dup_msg:
+            QMessageBox.warning(self, "IP 중복", dup_msg)
+            QMessageBox.information(self, "IP 확인", "입력한 IP가 올바른지 확인한 뒤 다시 저장해 주세요.")
+            return
+        if (
+            QMessageBox.question(
+                self,
+                "IP 확인",
+                "다음 주소로 경광등을 저장할까요?\n\nIP: %s\n포트: %s" % (ip, port),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            != QMessageBox.Yes
+        ):
             return
         if self._qlight_editing_id is None:
             existing = self._find_qlight_by_qr_auth_id(qid)
