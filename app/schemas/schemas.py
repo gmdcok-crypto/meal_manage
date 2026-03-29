@@ -210,6 +210,11 @@ class VerifyDeviceRequest(BaseModel):
 
 
 # 장치 설정 (프린터·경광등·허용 QR) - PC 앱 설정 메뉴용
+class AuthQrEntry(BaseModel):
+    id: int
+    code: str  # PWA 스캔 문자열과 전체 일치
+
+
 class DeviceSettingsResponse(BaseModel):
     printer_enabled: bool = False
     printer_host: str = ""
@@ -218,7 +223,7 @@ class DeviceSettingsResponse(BaseModel):
     qlight_enabled: bool = False
     qlight_host: str = ""
     qlight_port: int = 20000
-    allowed_qr_list: List[str] = []  # 비어 있으면 모든 QR 허용, 있으면 목록에 있는 QR만 인증
+    allowed_qr_entries: List[AuthQrEntry] = []
 
 
 class DeviceSettingsUpdate(BaseModel):
@@ -229,13 +234,13 @@ class DeviceSettingsUpdate(BaseModel):
     qlight_enabled: Optional[bool] = None
     qlight_host: Optional[str] = None
     qlight_port: Optional[int] = None
-    allowed_qr_list: Optional[List[str]] = None
+    allowed_qr_entries: Optional[List[AuthQrEntry]] = None
 
 
 # QR 터미널 (구역별 프린터·경광등)
 class MealQrTerminalBase(BaseModel):
     name: str = ""
-    qr_code: str
+    qr_auth_id: int
     printer_enabled: bool = False
     printer_host: str = ""
     printer_port: int = 9100
@@ -253,7 +258,7 @@ class MealQrTerminalCreate(MealQrTerminalBase):
 
 class MealQrTerminalUpdate(BaseModel):
     name: Optional[str] = None
-    qr_code: Optional[str] = None
+    qr_auth_id: Optional[int] = None
     printer_enabled: Optional[bool] = None
     printer_host: Optional[str] = None
     printer_port: Optional[int] = None

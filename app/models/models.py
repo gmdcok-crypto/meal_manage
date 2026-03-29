@@ -79,11 +79,11 @@ class MealPolicy(Base):
 
 
 class MealQrTerminal(Base):
-    """QR 스캔 구역별 프린터·경광등 매핑 (한 줄 = QR1 + 1번 프린터 + 1번 경광등)."""
+    """QR 스캔 구역별 프린터·경광등 매핑. 스캔 문자열은 system_settings device 의 allowed_qr_entries 에서 id 로 연결."""
     __tablename__ = "meal_qr_terminals"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), default="")  # 표시용 (예: 1번 구역)
-    qr_code = Column(String(512), unique=True, nullable=False, index=True)  # 스캔된 문자열과 정확히 일치
+    qr_auth_id = Column(Integer, unique=True, nullable=False, index=True)  # device.allowed_qr_entries[].id
     printer_enabled = Column(Boolean, default=False)
     printer_host = Column(String(100), default="")
     printer_port = Column(Integer, default=9100)

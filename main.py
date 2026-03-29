@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 from app.api import auth, meal, admin
 from app.core.database import engine, Base
 from app.core.schema_repair import ensure_meal_logs_columns
+from app.core.meal_qr_terminal_migration import run_meal_qr_terminal_migration
 from app.models.models import SystemSetting  # Base.metadata에 등록 (startup에서 create_all용)
 
 app = FastAPI(title="PWA Meal Auth System")
@@ -33,6 +34,11 @@ async def startup():
         _logger.info("DB 누락 컬럼 보강 완료 (meal_logs: path, qr_terminal_id, void 등)")
     except Exception as e:
         _logger.warning("DB 누락 컬럼 보강 실패: %s", e)
+    try:
+        run_meal_qr_terminal_migration(engine)
+        _logger.info("meal_qr_terminals QR ID 마이그레이션 확인 완료")
+    except Exception as e:
+        _logger.warning("meal_qr_terminals 마이그레이션 실패: %s", e)
 
 # CORS 설정
 app.add_middleware(

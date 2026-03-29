@@ -66,7 +66,7 @@ def repair():
                 CREATE TABLE IF NOT EXISTS meal_qr_terminals (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(100) DEFAULT '',
-                    qr_code VARCHAR(512) NOT NULL,
+                    qr_auth_id INT NOT NULL,
                     printer_enabled TINYINT(1) DEFAULT 0,
                     printer_host VARCHAR(100) DEFAULT '',
                     printer_port INT DEFAULT 9100,
@@ -77,7 +77,7 @@ def repair():
                     is_active TINYINT(1) DEFAULT 1,
                     sort_order INT DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE KEY uq_meal_qr_terminals_qr (qr_code)
+                    UNIQUE KEY uq_meal_qr_terminals_qr_auth (qr_auth_id)
                 )
             """,
                 "meal_qr_terminals",
