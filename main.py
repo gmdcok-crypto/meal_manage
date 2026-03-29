@@ -33,7 +33,7 @@ async def startup():
         _logger.warning("DB 스키마 확인 중 예외 (무시하고 진행): %s", e)
     try:
         await ensure_meal_logs_columns(engine)
-        _logger.info("DB 누락 컬럼 보강 완료 (meal_logs.qr_terminal_id 등)")
+        _logger.info("DB 누락 컬럼 보강 완료 (meal_logs: path, qr_terminal_id, void 등)")
     except Exception as e:
         _logger.warning("DB 누락 컬럼 보강 실패: %s", e)
 
