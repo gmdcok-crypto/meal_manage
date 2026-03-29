@@ -29,8 +29,9 @@ NOTICE_HTML_PATH = os.path.join(_MEAL_MANAGE_ROOT, "static", "notice.html")
 _ws_origin = _API_BASE.replace("https://", "wss://").replace("http://", "ws://").split("/api")[0]
 WS_URL = _ws_origin + "/api/admin/ws"
 API_TIMEOUT = 10.0
-# 로그인: 기본은 창 생략 후 메인 바로 표시. 로그인 창을 쓰려면 환경변수 MEAL_PC_REQUIRE_LOGIN=1 (또는 true/yes)
-PC_APP_SKIP_LOGIN = os.environ.get("MEAL_PC_REQUIRE_LOGIN", "").strip().lower() not in ("1", "true", "yes")
+# 로그인: Railway 관리 API(/policies 등)는 Bearer(admin:*) 토큰 필수 → 기본은 로그인 창 표시.
+# 개발용으로만 로그인 생략: MEAL_PC_SKIP_LOGIN=1 (true/yes) — 토큰 없음으로 대부분 관리 메뉴는 401 남.
+PC_APP_SKIP_LOGIN = os.environ.get("MEAL_PC_SKIP_LOGIN", "").strip().lower() in ("1", "true", "yes")
 
 
 def _run_print_and_qlight(meal_data: dict, device_settings: dict):
