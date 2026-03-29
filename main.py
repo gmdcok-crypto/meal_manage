@@ -9,6 +9,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
 from app.api import auth, meal, admin
 from app.core.database import engine, Base
+from app.core.schema_repair import ensure_meal_logs_columns
 from app.models.models import SystemSetting  # Base.metadata에 등록 (startup에서 create_all용)
 
 app = FastAPI(title="PWA Meal Auth System")
@@ -30,6 +31,11 @@ async def startup():
         _logger.info("DB 스키마 확인 완료 (system_settings 등)")
     except Exception as e:
         _logger.warning("DB 스키마 확인 중 예외 (무시하고 진행): %s", e)
+    try:
+        await ensure_meal_logs_columns(engine)
+        _logger.info("DB 누락 컬럼 보강 완료 (meal_logs.qr_terminal_id 등)")
+    except Exception as e:
+        _logger.warning("DB 누락 컬럼 보강 실패: %s", e)
 
 # CORS 설정
 app.add_middleware(

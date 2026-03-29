@@ -75,6 +75,15 @@ async def list_raw_data(
             import logging
             logging.getLogger(__name__).warning("raw_data skip log id=%s: %s", getattr(log, "id", None), e)
             continue
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "raw_data skip log id=%s (unexpected): %s",
+                getattr(log, "id", None),
+                e,
+                exc_info=True,
+            )
+            continue
     return out
 
 @router.post("/manual", response_model=MealLogResponse)
