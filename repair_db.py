@@ -1,46 +1,45 @@
-import asyncio
-from sqlalchemy import text, create_engine
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from app.core.database import engine, Base, SessionLocal
-from app.models.models import User, CafeteriaAdmin
+"""DB 생성·스키마 보강 (MariaDB 공식 Connector / 동기 SQLAlchemy)."""
+from sqlalchemy import text, create_engine, select
+from sqlalchemy.orm import sessionmaker
+from app.core.database import Base
+from app.models.models import User
 from app.core.config import settings
 
-async def repair():
-    # 1. Create database if not exists using aiomysql
-    root_url = settings.DATABASE_URL.rsplit("/", 1)[0] # get mysql+aiomysql://root:pass@localhost:3306
-    db_name = settings.DATABASE_URL.rsplit("/", 1)[1]  # get meal_db
-    
-    # Connect to the server without a database
-    temp_engine = create_async_engine(root_url)
-    async with temp_engine.connect() as conn:
-        await conn.execute(text(f"CREATE DATABASE IF NOT EXISTS {db_name}"))
-        await conn.commit()
-        print(f"Database '{db_name}' ensured.")
-    await temp_engine.dispose()
 
-    # 2. Re-initialize async engine to make sure it picks up the new DB
-    async_engine = create_async_engine(settings.DATABASE_URL)
-    
-    async with async_engine.begin() as conn:
-        # 기존 DB 마이그레이션: users 테이블이 있으면 employees 로 이름 변경
+def repair():
+    root_url = settings.DATABASE_URL.rsplit("/", 1)[0]
+    db_name = settings.DATABASE_URL.rsplit("/", 1)[1]
+
+    temp_engine = create_engine(root_url)
+    with temp_engine.connect() as conn:
+        conn.execute(text(f"CREATE DATABASE IF NOT EXISTS `{db_name}`"))
+        conn.commit()
+        print(f"Database '{db_name}' ensured.")
+    temp_engine.dispose()
+
+    sync_engine = create_engine(settings.DATABASE_URL)
+
+    with sync_engine.begin() as conn:
         try:
-            res = await conn.execute(text(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                "WHERE table_schema = DATABASE() AND table_name = 'users'"
-            ))
+            res = conn.execute(
+                text(
+                    "SELECT COUNT(*) FROM information_schema.tables "
+                    "WHERE table_schema = DATABASE() AND table_name = 'users'"
+                )
+            )
             n = res.scalar()
             if n and int(n) > 0:
-                await conn.execute(text("RENAME TABLE users TO employees"))
+                conn.execute(text("RENAME TABLE users TO employees"))
                 print("Migrated table: users -> employees")
         except Exception as e:
             print(f"Note: Migration users->employees: {e}")
-        # 3. Ensure tables exist (recreates employees table if deleted)
-        await conn.run_sync(Base.metadata.create_all)
+
+        Base.metadata.create_all(bind=conn)
         print("Schema ensured (tables created/verified).")
 
-        # 3-1. 식당관리 전용 테이블 (create_all에 안 잡힐 수 있어 명시 생성)
-        try:
-            await conn.execute(text("""
+        for ddl, label in (
+            (
+                """
                 CREATE TABLE IF NOT EXISTS cafeteria_admins (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     emp_no VARCHAR(50) NOT NULL UNIQUE,
@@ -49,27 +48,21 @@ async def repair():
                     is_verified TINYINT(1) DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            """))
-            print("Ensured 'cafeteria_admins' table.")
-        except Exception as e:
-            print(f"Note: cafeteria_admins: {e}")
-
-        # 3-2. 장치 설정 (PC 앱 설정 메뉴)
-        try:
-            await conn.execute(text("""
+            """,
+                "cafeteria_admins",
+            ),
+            (
+                """
                 CREATE TABLE IF NOT EXISTS system_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     `key` VARCHAR(50) NOT NULL UNIQUE,
                     value JSON
                 )
-            """))
-            print("Ensured 'system_settings' table.")
-        except Exception as e:
-            print(f"Note: system_settings: {e}")
-
-        # 3-3. QR 터미널 (구역별 프린터·경광등)
-        try:
-            await conn.execute(text("""
+            """,
+                "system_settings",
+            ),
+            (
+                """
                 CREATE TABLE IF NOT EXISTS meal_qr_terminals (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     name VARCHAR(100) DEFAULT '',
@@ -86,64 +79,60 @@ async def repair():
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE KEY uq_meal_qr_terminals_qr (qr_code)
                 )
-            """))
-            print("Ensured 'meal_qr_terminals' table.")
-        except Exception as e:
-            print(f"Note: meal_qr_terminals: {e}")
+            """,
+                "meal_qr_terminals",
+            ),
+        ):
+            try:
+                conn.execute(text(ddl))
+                print(f"Ensured '{label}' table.")
+            except Exception as e:
+                print(f"Note: {label}: {e}")
 
         try:
-            await conn.execute(text(
-                "ALTER TABLE meal_logs ADD COLUMN qr_terminal_id INT NULL"
-            ))
+            conn.execute(text("ALTER TABLE meal_logs ADD COLUMN qr_terminal_id INT NULL"))
             print("Ensured 'qr_terminal_id' column in meal_logs")
         except Exception:
             pass
 
-        # 4. Check and add/remove columns for data consistency
-        # Add 'code' to companies if missing
         try:
-            await conn.execute(text("ALTER TABLE companies ADD COLUMN code VARCHAR(50)"))
+            conn.execute(text("ALTER TABLE companies ADD COLUMN code VARCHAR(50)"))
             print("Ensured 'code' column in companies")
-        except: pass
-
-        # Ensure 'department_id' in employees
+        except Exception:
+            pass
         try:
-            await conn.execute(text("ALTER TABLE employees ADD COLUMN department_id INTEGER"))
+            conn.execute(text("ALTER TABLE employees ADD COLUMN department_id INTEGER"))
             print("Ensured 'department_id' column in employees")
-        except: pass
-
-        # Ensure 'is_verified' in employees
+        except Exception:
+            pass
         try:
-            await conn.execute(text("ALTER TABLE employees ADD COLUMN is_verified BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE employees ADD COLUMN is_verified BOOLEAN DEFAULT FALSE"))
             print("Ensured 'is_verified' column in employees")
-        except: pass
-
-        # Ensure 'password_hash' in employees
+        except Exception:
+            pass
         try:
-            await conn.execute(text("ALTER TABLE employees ADD COLUMN password_hash VARCHAR(255)"))
+            conn.execute(text("ALTER TABLE employees ADD COLUMN password_hash VARCHAR(255)"))
             print("Ensured 'password_hash' column in employees")
-        except: pass
-
-        # Ensure 'is_admin' in employees (관리자 메뉴용)
+        except Exception:
+            pass
         try:
-            await conn.execute(text("ALTER TABLE employees ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE employees ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
             print("Ensured 'is_admin' column in employees")
-        except: pass
+        except Exception:
+            pass
 
-        # Ensure 'policy_id' in meal_logs (rename menu_id if exists)
         try:
-            result = await conn.execute(text("DESCRIBE meal_logs"))
-            columns = [col[0] for col in result.fetchall()]
+            result = conn.execute(text("DESCRIBE meal_logs"))
+            columns = [row[0] for row in result.fetchall()]
             if "menu_id" in columns and "policy_id" not in columns:
-                await conn.execute(text("ALTER TABLE meal_logs CHANGE COLUMN menu_id policy_id INT(11)"))
+                conn.execute(text("ALTER TABLE meal_logs CHANGE COLUMN menu_id policy_id INT(11)"))
                 print("Migrated 'menu_id' to 'policy_id' in meal_logs")
             elif "policy_id" not in columns:
-                await conn.execute(text("ALTER TABLE meal_logs ADD COLUMN policy_id INT(11)"))
+                conn.execute(text("ALTER TABLE meal_logs ADD COLUMN policy_id INT(11)"))
                 print("Added 'policy_id' column to meal_logs")
         except Exception as e:
             print(f"Error ensuring 'policy_id' in meal_logs: {e}")
 
-        # 5. Ensure ON DELETE CASCADE for all foreign keys
         print("\nOptimizing Foreign Key constraints (ON DELETE CASCADE)...")
         fk_configs = [
             ("departments", "company_id", "companies", "CASCADE"),
@@ -154,58 +143,69 @@ async def repair():
             ("meal_logs", "policy_id", "meal_policies", "CASCADE"),
             ("meal_logs", "void_operator_id", "employees", "SET NULL"),
             ("meal_logs", "qr_terminal_id", "meal_qr_terminals", "SET NULL"),
-            ("audit_logs", "operator_id", "employees", "SET NULL")
+            ("audit_logs", "operator_id", "employees", "SET NULL"),
         ]
 
         for table, col, ref_table, on_delete in fk_configs:
             try:
-                # Find existing FK name
-                fk_query = text(f"""
-                    SELECT CONSTRAINT_NAME 
-                    FROM information_schema.KEY_COLUMN_USAGE 
-                    WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :table 
+                fk_query = text(
+                    """
+                    SELECT CONSTRAINT_NAME
+                    FROM information_schema.KEY_COLUMN_USAGE
+                    WHERE TABLE_SCHEMA = :db AND TABLE_NAME = :table
                     AND COLUMN_NAME = :col AND REFERENCED_TABLE_NAME IS NOT NULL
-                """)
-                res = await conn.execute(fk_query, {"db": db_name, "table": table, "col": col})
+                """
+                )
+                res = conn.execute(
+                    fk_query, {"db": db_name, "table": table, "col": col}
+                )
                 fk_name = res.scalar()
-                
+
                 if fk_name:
-                    await conn.execute(text(f"ALTER TABLE {table} DROP FOREIGN KEY {fk_name}"))
+                    conn.execute(text(f"ALTER TABLE {table} DROP FOREIGN KEY {fk_name}"))
                     print(f"  Dropped old FK {fk_name} on {table}({col})")
-                
-                # Add new FK with CASCADE/SET NULL
+
                 new_fk_name = f"fk_{table}_{col}_{ref_table}"
-                await conn.execute(text(f"""
-                    ALTER TABLE {table} 
-                    ADD CONSTRAINT {new_fk_name} 
-                    FOREIGN KEY ({col}) REFERENCES {ref_table}(id) 
+                conn.execute(
+                    text(
+                        f"""
+                    ALTER TABLE {table}
+                    ADD CONSTRAINT {new_fk_name}
+                    FOREIGN KEY ({col}) REFERENCES {ref_table}(id)
                     ON DELETE {on_delete}
-                """))
+                """
+                    )
+                )
                 print(f"  Added Optimized FK {new_fk_name} (ON DELETE {on_delete})")
             except Exception as e:
                 print(f"  Note: Skipped FK optimization for {table}({col}): {e}")
 
-    # 5. Ensure admin user exists (re-add if table was wiped)
-    async with async_sessionmaker(async_engine, expire_on_commit=False)() as db:
-        try:
-            from sqlalchemy import select
-            res = await db.execute(select(User).where(User.emp_no == "admin"))
-            if not res.scalar():
-                db.add(User(
-                    id=1, 
-                    name="System Admin", 
-                    emp_no="admin", 
+    Session = sessionmaker(bind=sync_engine, expire_on_commit=False)
+    db = Session()
+    try:
+        res = db.execute(select(User).where(User.emp_no == "admin"))
+        if res.scalar_one_or_none() is None:
+            db.add(
+                User(
+                    id=1,
+                    name="System Admin",
+                    emp_no="admin",
                     status="ACTIVE",
-                    social_provider="MANUAL"
-                ))
-                await db.commit()
-                print("Created default admin user (admin)")
-            else:
-                print("Admin user already exists")
-        except Exception as e:
-            print(f"Error checking/creating admin user: {e}")
-    
-    await async_engine.dispose()
+                    social_provider="MANUAL",
+                )
+            )
+            db.commit()
+            print("Created default admin user (admin)")
+        else:
+            print("Admin user already exists")
+    except Exception as e:
+        print(f"Error checking/creating admin user: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+    sync_engine.dispose()
+
 
 if __name__ == "__main__":
-    asyncio.run(repair())
+    repair()

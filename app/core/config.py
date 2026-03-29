@@ -2,13 +2,21 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator, model_validator
 
 def _normalize_database_url(url: str) -> str:
-    """공백/줄바꿈 제거, mysql:// → mysql+aiomysql:// 변환"""
+    """공백/줄바꿈 제거. 레거시 mysql+aiomysql → MariaDB 공식 커넥터 URL로 통일."""
     u = (url or "").strip().split("\n")[0].strip()
-    if u.startswith("mysql://") and not u.startswith("mysql+aiomysql://"):
-        u = "mysql+aiomysql://" + u[len("mysql://"):]
+    # Railway 등: mysql://host:port/db → mariadb+mariadbconnector://
+    if u.startswith("mysql://") and "+" not in u.split("://", 1)[0]:
+        u = "mariadb+mariadbconnector://" + u[len("mysql://") :]
+    elif u.startswith("mysql+aiomysql://"):
+        u = "mariadb+mariadbconnector://" + u[len("mysql+aiomysql://") :]
+    elif u.startswith("mysql+pymysql://"):
+        u = "mariadb+mariadbconnector://" + u[len("mysql+pymysql://") :]
+    elif u.startswith("mysql+asyncmy://"):
+        u = "mariadb+mariadbconnector://" + u[len("mysql+asyncmy://") :]
+    # 이미 mariadb+mariadbconnector:// 이면 그대로
     return u
 
-_DEFAULT_DATABASE_URL = "mysql+aiomysql://root:700312ok!@localhost:3306/meal_db"
+_DEFAULT_DATABASE_URL = "mariadb+mariadbconnector://root:700312ok!@localhost:3306/meal_db"
 _DEFAULT_SECRET_KEY = "your-secret-key-change-it-in-production"
 
 class Settings(BaseSettings):

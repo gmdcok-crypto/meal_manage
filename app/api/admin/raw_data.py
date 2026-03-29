@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
@@ -16,13 +16,13 @@ from app.core.time_utils import utc_now, parse_created_at_kst_to_utc, kst_date_r
 router = APIRouter(tags=["raw-data"])
 
 @router.get("", response_model=List[MealLogAdminDetail])
-async def list_raw_data(
+def list_raw_data(
     start_date: Optional[date] = None,
     end_date: Optional[date] = None,
     search: Optional[str] = None,
     path: Optional[str] = None,
     is_void: Optional[bool] = None,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     # selectinload: 비동기 세션에서 joinedload+수동 outerjoin 조합은 관계 미로딩 → lazy 접근 시 MissingGreenlet(500) 유발 가능
@@ -64,7 +64,7 @@ async def list_raw_data(
     if filters:
         query = query.where(and_(*filters))
         
-    result = await db.execute(query.order_by(MealLog.created_at.desc()))
+    result = db.execute(query.order_by(MealLog.created_at.desc()))
     logs = result.scalars().all()
 
     # 직렬화 실패 시 해당 로그만 제외하고 응답 (보고서 등에서 500 방지)
@@ -88,23 +88,24 @@ async def list_raw_data(
     return out
 
 @router.post("/manual", response_model=MealLogResponse)
-async def create_manual_meal(
+def create_manual_meal(
     user_id: int,
     policy_id: int,
+    background_tasks: BackgroundTasks,
     created_at: Optional[datetime] = None,
     guest_count: int = 0,
     reason: str = "Manual Entry",
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     # Fetch policy to get price snapshot
-    policy_result = await db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
+    policy_result = db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
     policy = policy_result.scalar_one_or_none()
     if not policy:
         raise HTTPException(status_code=404, detail="Meal Policy not found")
 
-    user_result = await db.execute(select(User).where(User.id == user_id))
+    user_result = db.execute(select(User).where(User.id == user_id))
     if user_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="User not found")
         
@@ -119,9 +120,9 @@ async def create_manual_meal(
         created_at=created_at_naive_kst
     )
     db.add(new_log)
-    await db.flush()
+    db.flush()
     
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "CREATE", "meal_logs", new_log.id,
         after_value={
             "user_id": user_id,
@@ -132,25 +133,25 @@ async def create_manual_meal(
         reason=reason
     )
     
-    await db.commit()
-    await db.refresh(new_log)
+    db.commit()
+    db.refresh(new_log)
     
     # 수동 등록은 DB만 저장. 프린터·경광등 없음. 대시보드 숫자 갱신용 이벤트만 송신.
     from app.api.websocket import manager
-    import asyncio
-    asyncio.create_task(manager.broadcast({"type": "STATS_REFRESH", "data": {}}))
+    background_tasks.add_task(manager.broadcast, {"type": "STATS_REFRESH", "data": {}})
     
     return new_log
 
 @router.patch("/{log_id}/void", response_model=MealLogResponse)
-async def void_meal_log(
+def void_meal_log(
     log_id: int,
     reason: str,
+    background_tasks: BackgroundTasks,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealLog).where(MealLog.id == log_id))
+    result = db.execute(select(MealLog).where(MealLog.id == log_id))
     log = result.scalar_one_or_none()
     if not log:
         raise HTTPException(status_code=404, detail="Meal log not found")
@@ -163,37 +164,34 @@ async def void_meal_log(
     log.void_operator_id = operator_id
     log.voided_at = utc_now()
     
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "VOID", "meal_logs", log.id,
         before_value={"is_void": False},
         after_value={"is_void": True, "void_reason": reason},
         reason="Admin voiding"
     )
     
-    await db.commit()
-    await db.refresh(log)
+    db.commit()
+    db.refresh(log)
     
     # WebSocket Broadcast (실시간 갱신용)
     from app.api.websocket import manager
-    import asyncio
-    asyncio.create_task(manager.broadcast({
-        "type": "MEAL_LOG_VOIDED",
-        "data": {
-            "log_id": log.id
-        }
-    }))
+    background_tasks.add_task(
+        manager.broadcast,
+        {"type": "MEAL_LOG_VOIDED", "data": {"log_id": log.id}},
+    )
     
     return log
 
 @router.put("/{log_id}", response_model=MealLogResponse)
-async def update_raw_data(
+def update_raw_data(
     log_id: int,
     update_data: MealLogUpdate,
     operator_id: int = 1,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealLog).where(MealLog.id == log_id))
+    result = db.execute(select(MealLog).where(MealLog.id == log_id))
     log = result.scalar_one_or_none()
     if not log:
         raise HTTPException(status_code=404, detail="Meal log not found")
@@ -207,7 +205,7 @@ async def update_raw_data(
     
     if update_data.user_id is not None: log.user_id = update_data.user_id
     if update_data.policy_id is not None:
-        policy_result = await db.execute(select(MealPolicy).where(MealPolicy.id == update_data.policy_id))
+        policy_result = db.execute(select(MealPolicy).where(MealPolicy.id == update_data.policy_id))
         policy = policy_result.scalar_one_or_none()
         if policy:
             log.policy_id = update_data.policy_id
@@ -216,7 +214,7 @@ async def update_raw_data(
         log.created_at = (parse_created_at_kst_to_utc(update_data.created_at) or utc_now()).astimezone(KST).replace(tzinfo=None)
     if update_data.guest_count is not None: log.guest_count = update_data.guest_count
     
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "UPDATE", "meal_logs", log.id,
         before_value=before_value,
         after_value={
@@ -228,28 +226,28 @@ async def update_raw_data(
         reason=update_data.reason or "Admin update"
     )
     
-    await db.commit()
-    await db.refresh(log)
+    db.commit()
+    db.refresh(log)
     return log
 
 @router.delete("/{log_id}")
-async def delete_raw_data(
+def delete_raw_data(
     log_id: int,
     operator_id: int = 1,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealLog).where(MealLog.id == log_id))
+    result = db.execute(select(MealLog).where(MealLog.id == log_id))
     log = result.scalar_one_or_none()
     if not log:
         raise HTTPException(status_code=404, detail="Meal log not found")
         
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "DELETE", "meal_logs", log.id,
         before_value={"id": log.id, "user_id": log.user_id},
         reason="Admin physical delete"
     )
     
-    await db.delete(log)
-    await db.commit()
+    db.delete(log)
+    db.commit()
     return {"message": "Deleted successfully"}

@@ -1,13 +1,13 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session, DeclarativeBase
 from .config import settings
 
 try:
-    engine = create_async_engine(
+    engine = create_engine(
         settings.DATABASE_URL,
         echo=False,
-        pool_pre_ping=True,   # 사용 전 연결 살아있는지 확인 → 끊긴 연결 재사용 방지
-        pool_recycle=300,      # 5분마다 연결 갱신 (DB idle timeout 전에 재사용)
+        pool_pre_ping=True,
+        pool_recycle=300,
     )
 except Exception as e:
     import sys
@@ -17,15 +17,25 @@ except Exception as e:
     print(f"[DB] DATABASE_URL (masked): {masked}", file=sys.stderr)
     raise
 
-SessionLocal = async_sessionmaker(
+SessionLocal = sessionmaker(
     bind=engine,
-    class_=AsyncSession,
+    autoflush=False,
+    autocommit=False,
     expire_on_commit=False,
 )
+
 
 class Base(DeclarativeBase):
     pass
 
-async def get_db():
-    async with SessionLocal() as session:
-        yield session
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()

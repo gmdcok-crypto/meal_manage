@@ -2,7 +2,7 @@
 배포 DB가 코드보다 오래된 경우 누락 컬럼으로 SELECT 시 500이 나므로 기동 시 보강."""
 import logging
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +12,9 @@ def _mysql_is_duplicate_column(msg: str) -> bool:
     return "duplicate" in m or "1060" in m or "already exists" in m
 
 
-async def _mysql_try_ddl(conn, ddl: str, label: str) -> None:
+def _mysql_try_ddl(conn, ddl: str, label: str) -> None:
     try:
-        await conn.execute(text(ddl))
+        conn.execute(text(ddl))
         logger.info("Schema repair: %s", label)
     except Exception as e:
         if _mysql_is_duplicate_column(str(e)):
@@ -22,17 +22,17 @@ async def _mysql_try_ddl(conn, ddl: str, label: str) -> None:
         logger.warning("Schema repair %s: %s", label, e)
 
 
-async def _pg_try_ddl(conn, ddl: str, label: str) -> None:
+def _pg_try_ddl(conn, ddl: str, label: str) -> None:
     try:
-        await conn.execute(text(ddl))
+        conn.execute(text(ddl))
         logger.info("Schema repair: %s", label)
     except Exception as e:
         logger.warning("Schema repair %s: %s", label, e)
 
 
-async def _sqlite_try_ddl(conn, ddl: str, label: str) -> None:
+def _sqlite_try_ddl(conn, ddl: str, label: str) -> None:
     try:
-        await conn.execute(text(ddl))
+        conn.execute(text(ddl))
         logger.info("Schema repair: %s", label)
     except Exception as e:
         if "duplicate column" in str(e).lower():
@@ -40,9 +40,9 @@ async def _sqlite_try_ddl(conn, ddl: str, label: str) -> None:
         logger.warning("Schema repair %s: %s", label, e)
 
 
-async def ensure_meal_logs_columns(engine: AsyncEngine) -> None:
+def ensure_meal_logs_columns(engine: Engine) -> None:
     """ORM이 조회에 쓰는 meal_logs 컬럼이 예전 DB에 없으면 추가."""
-    async with engine.begin() as conn:
+    with engine.begin() as conn:
         dialect = conn.dialect.name
 
         if dialect == "mysql":
@@ -55,7 +55,7 @@ async def ensure_meal_logs_columns(engine: AsyncEngine) -> None:
                 ("ALTER TABLE meal_logs ADD COLUMN void_operator_id INT NULL", "meal_logs.void_operator_id"),
                 ("ALTER TABLE meal_logs ADD COLUMN voided_at DATETIME NULL", "meal_logs.voided_at"),
             ):
-                await _mysql_try_ddl(conn, ddl, label)
+                _mysql_try_ddl(conn, ddl, label)
 
         elif dialect == "postgresql":
             for ddl, label in (
@@ -88,7 +88,7 @@ async def ensure_meal_logs_columns(engine: AsyncEngine) -> None:
                     "meal_logs.voided_at",
                 ),
             ):
-                await _pg_try_ddl(conn, ddl, label)
+                _pg_try_ddl(conn, ddl, label)
 
         elif dialect == "sqlite":
             for ddl, label in (
@@ -100,4 +100,4 @@ async def ensure_meal_logs_columns(engine: AsyncEngine) -> None:
                 ("ALTER TABLE meal_logs ADD COLUMN void_operator_id INTEGER NULL", "meal_logs.void_operator_id"),
                 ("ALTER TABLE meal_logs ADD COLUMN voided_at DATETIME NULL", "meal_logs.voided_at"),
             ):
-                await _sqlite_try_ddl(conn, ddl, label)
+                _sqlite_try_ddl(conn, ddl, label)

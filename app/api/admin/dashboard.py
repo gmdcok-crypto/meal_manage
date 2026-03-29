@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.api.auth import get_current_admin
@@ -21,8 +21,8 @@ def _policy_display_order_key(policy):
 
 
 @router.get("/today", response_model=DashboardStats)
-async def get_today_stats(
-    db: AsyncSession = Depends(get_db),
+def get_today_stats(
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     today = kst_today()
@@ -35,7 +35,7 @@ async def get_today_stats(
     
     # Get all active policies for breakdown (정렬: 일반 식사 순서, 자정 넘김은 심야→새벽)
     policy_query = select(MealPolicy).where(MealPolicy.is_active == True).order_by(MealPolicy.start_time)
-    policy_result = await db.execute(policy_query)
+    policy_result = db.execute(policy_query)
     policies = sorted(policy_result.scalars().all(), key=_policy_display_order_key)
     
     # Get all logs for today (created_at은 KST naive로 저장됨)
@@ -47,7 +47,7 @@ async def get_today_stats(
             MealLog.created_at < end_naive,
         )
     )
-    log_result = await db.execute(log_query)
+    log_result = db.execute(log_query)
     logs = log_result.scalars().all()
     
     # Exception criteria: 

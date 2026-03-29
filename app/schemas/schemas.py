@@ -1,6 +1,6 @@
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timedelta
 from typing import Optional, List
-from pydantic import BaseModel, Field, field_serializer
+from pydantic import BaseModel, Field, field_serializer, field_validator
 
 from app.core.time_utils import utc_to_kst_str
 
@@ -62,10 +62,28 @@ class MealPolicyBase(BaseModel):
     guest_price: Optional[int] = 0
     is_active: bool = True
 
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def coerce_sql_time(cls, v):
+        """MySQL TIME 등이 timedelta로 올 때 응답 직렬화 500 방지."""
+        if v is None:
+            return None
+        if isinstance(v, time):
+            return v
+        if isinstance(v, timedelta):
+            sec = int(v.total_seconds()) % 86400
+            if sec < 0:
+                sec += 86400
+            h, rem = divmod(sec, 3600)
+            m, s = divmod(rem, 60)
+            return time(h, m, s)
+        return v
+
+
 class MealPolicyResponse(MealPolicyBase):
     id: int
-    company_id: int
-    
+    company_id: Optional[int] = None  # 레거시 행 NULL 허용 (필수 int면 ORM→스키마 검증 500)
+
     class Config:
         from_attributes = True
 

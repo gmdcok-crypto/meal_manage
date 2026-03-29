@@ -2,7 +2,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, func
 
 from app.core.database import get_db
@@ -50,42 +50,42 @@ def terminal_to_device_payload(t: MealQrTerminal) -> dict:
 
 
 @router.get("", response_model=List[MealQrTerminalResponse])
-async def list_terminals(
-    db: AsyncSession = Depends(get_db),
+def list_terminals(
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(
+    result = db.execute(
         select(MealQrTerminal).order_by(MealQrTerminal.sort_order, MealQrTerminal.id)
     )
     return list(result.scalars().all())
 
 
 @router.post("", response_model=MealQrTerminalResponse)
-async def create_terminal(
+def create_terminal(
     body: MealQrTerminalCreate,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     qr = (body.qr_code or "").strip()
     if not qr:
         raise HTTPException(status_code=400, detail="QR 코드(스캔 문자열)는 필수입니다.")
-    dup = await db.execute(select(MealQrTerminal).where(MealQrTerminal.qr_code == qr))
+    dup = db.execute(select(MealQrTerminal).where(MealQrTerminal.qr_code == qr))
     if dup.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="이미 등록된 QR 코드입니다.")
     row = MealQrTerminal(**body.model_dump())
     db.add(row)
-    await db.commit()
-    await db.refresh(row)
+    db.commit()
+    db.refresh(row)
     return row
 
 
 @router.get("/{terminal_id}", response_model=MealQrTerminalResponse)
-async def get_terminal(
+def get_terminal(
     terminal_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealQrTerminal).where(MealQrTerminal.id == terminal_id))
+    result = db.execute(select(MealQrTerminal).where(MealQrTerminal.id == terminal_id))
     row = result.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="터미널을 찾을 수 없습니다.")
@@ -93,13 +93,13 @@ async def get_terminal(
 
 
 @router.put("/{terminal_id}", response_model=MealQrTerminalResponse)
-async def update_terminal(
+def update_terminal(
     terminal_id: int,
     body: MealQrTerminalUpdate,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealQrTerminal).where(MealQrTerminal.id == terminal_id))
+    result = db.execute(select(MealQrTerminal).where(MealQrTerminal.id == terminal_id))
     row = result.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="터미널을 찾을 수 없습니다.")
@@ -108,7 +108,7 @@ async def update_terminal(
         data["qr_code"] = (data["qr_code"] or "").strip()
         if not data["qr_code"]:
             raise HTTPException(status_code=400, detail="QR 코드는 비울 수 없습니다.")
-        dup = await db.execute(
+        dup = db.execute(
             select(MealQrTerminal).where(
                 MealQrTerminal.qr_code == data["qr_code"],
                 MealQrTerminal.id != terminal_id,
@@ -118,35 +118,35 @@ async def update_terminal(
             raise HTTPException(status_code=400, detail="이미 등록된 QR 코드입니다.")
     for k, v in data.items():
         setattr(row, k, v)
-    await db.commit()
-    await db.refresh(row)
+    db.commit()
+    db.refresh(row)
     return row
 
 
 @router.delete("/{terminal_id}")
-async def delete_terminal(
+def delete_terminal(
     terminal_id: int,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealQrTerminal).where(MealQrTerminal.id == terminal_id))
+    result = db.execute(select(MealQrTerminal).where(MealQrTerminal.id == terminal_id))
     row = result.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=404, detail="터미널을 찾을 수 없습니다.")
-    await db.delete(row)
-    await db.commit()
+    db.delete(row)
+    db.commit()
     return {"ok": True}
 
 
-async def count_terminals(db: AsyncSession) -> int:
-    r = await db.execute(select(func.count()).select_from(MealQrTerminal))
+def count_terminals(db: Session) -> int:
+    r = db.execute(select(func.count()).select_from(MealQrTerminal))
     return int(r.scalar() or 0)
 
 
-async def find_terminal_by_qr(db: AsyncSession, qr_norm: str):
+def find_terminal_by_qr(db: Session, qr_norm: str):
     if not qr_norm:
         return None
-    result = await db.execute(
+    result = db.execute(
         select(MealQrTerminal).where(
             MealQrTerminal.is_active.is_(True),
             MealQrTerminal.qr_code == qr_norm,

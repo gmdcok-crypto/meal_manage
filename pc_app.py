@@ -534,13 +534,21 @@ class APIClient:
 
     # Policy Actions
     def get_policies(self):
+        """(성공 여부, 목록 또는 오류 메시지). 서버 500 등 시 빈 리스트만 주면 UI에 원인이 안 보였음."""
         try:
             r = self.client.get(f"{self.base_url}/policies", headers=self._auth_headers())
-            if r.status_code != 200:
-                return []
-            return _normalize_api_list_payload(r.json())
-        except Exception:
-            return []
+            try:
+                body = r.json()
+            except Exception:
+                body = {}
+            if r.status_code == 200:
+                return (True, _normalize_api_list_payload(body))
+            detail = body.get("detail", r.text) if isinstance(body, dict) else r.text
+            if isinstance(detail, list):
+                detail = str(detail)
+            return (False, detail or "조회 실패")
+        except Exception as e:
+            return (False, str(e))
 
     def create_policy(self, data):
         try:
@@ -2106,7 +2114,16 @@ class RawDataScreen(QWidget):
         self.pol_loader.start()
 
     def on_policies_loaded(self, data):
-        if not isinstance(data, list): return
+        if isinstance(data, tuple) and len(data) == 2:
+            ok, payload = data
+            if not ok:
+                self.policies_list = []
+                self.policy_combo.clear()
+                self.policy_combo.addItem("선택하세요", None)
+                return
+            data = payload
+        if not isinstance(data, list):
+            return
         self.policies_list = data
         self.policy_combo.clear()
         self.policy_combo.addItem("선택하세요", None)
@@ -2460,6 +2477,18 @@ class PolicyScreen(QWidget):
     def _on_policies_list_loaded(self, data, seq):
         if seq != self._policy_load_seq:
             return
+        if isinstance(data, tuple) and len(data) == 2:
+            ok, payload = data
+            if not ok:
+                QApplication.restoreOverrideCursor()
+                QMessageBox.warning(
+                    self,
+                    "식사 정책",
+                    "목록을 불러오지 못했습니다.\n"
+                    + (str(payload) if payload is not None else "알 수 없는 오류"),
+                )
+                return
+            data = payload
         self.display_data(data)
 
     def display_data(self, data):

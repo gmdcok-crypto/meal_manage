@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, update
 from app.core.database import get_db
 from app.api.auth import get_current_admin
@@ -11,19 +11,19 @@ from typing import List
 router = APIRouter(tags=["policies"])
 
 @router.get("", response_model=List[MealPolicyResponse])
-async def list_policies(db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
-    result = await db.execute(select(MealPolicy))
+def list_policies(db: Session = Depends(get_db), _admin=Depends(get_current_admin)):
+    result = db.execute(select(MealPolicy))
     return result.scalars().all()
 
 @router.post("", response_model=MealPolicyResponse)
-async def create_policy(
+def create_policy(
     policy_in: MealPolicyBase,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     # 유효한 회사 ID 요청
-    company_res = await db.execute(select(Company.id).limit(1))
+    company_res = db.execute(select(Company.id).limit(1))
     company_id = company_res.scalar()
     
     if not company_id:
@@ -31,7 +31,7 @@ async def create_policy(
 
     new_policy = MealPolicy(**policy_in.dict(), company_id=company_id)
     db.add(new_policy)
-    await db.flush()
+    db.flush()
     
     # JSON 직렬화를 위해 time 객체를 문자열로 변환
     audit_data = policy_in.dict()
@@ -39,25 +39,25 @@ async def create_policy(
         if hasattr(v, 'isoformat') and not isinstance(v, str):
             audit_data[k] = v.isoformat()
 
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "CREATE", "meal_policies", new_policy.id,
         after_value=audit_data,
         reason="Initial policy setup"
     )
     
-    await db.commit()
-    await db.refresh(new_policy)
+    db.commit()
+    db.refresh(new_policy)
     return new_policy
 
 @router.put("/{policy_id}", response_model=MealPolicyResponse)
-async def update_policy(
+def update_policy(
     policy_id: int,
     policy_in: MealPolicyBase,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
+    result = db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
     policy = result.scalar_one_or_none()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
@@ -73,37 +73,37 @@ async def update_policy(
     for key, value in policy_in.dict().items():
         setattr(policy, key, value)
         
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "UPDATE", "meal_policies", policy.id,
         before_value=before_value,
         after_value=after_value,
         reason="Policy update"
     )
     
-    await db.commit()
-    await db.refresh(policy)
+    db.commit()
+    db.refresh(policy)
     return policy
 
 @router.delete("/{policy_id}")
-async def delete_policy(
+def delete_policy(
     policy_id: int,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
+    result = db.execute(select(MealPolicy).where(MealPolicy.id == policy_id))
     policy = result.scalar_one_or_none()
     if not policy:
         raise HTTPException(status_code=404, detail="Policy not found")
         
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "DELETE", "meal_policies", policy.id,
         before_value=None,
         after_value=None,
         reason="Policy deletion"
     )
     
-    await db.delete(policy)
-    await db.commit()
+    db.delete(policy)
+    db.commit()
     
     return {"ok": True}

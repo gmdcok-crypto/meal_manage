@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.orm import joinedload
 from sqlalchemy import select, update, and_, or_, func
 from app.core.database import get_db
@@ -15,11 +15,11 @@ from app.core.time_utils import utc_now
 router = APIRouter(tags=["employees"])
 
 @router.get("", response_model=List[UserResponse])
-async def list_employees(
+def list_employees(
     dept: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     query = select(User).options(joinedload(User.department_ref))
@@ -44,18 +44,18 @@ async def list_employees(
     if filters:
         query = query.where(and_(*filters))
     
-    result = await db.execute(query.order_by(User.emp_no))
+    result = db.execute(query.order_by(User.emp_no))
     return result.scalars().all()
 
 @router.post("", response_model=UserResponse)
-async def create_employee(
+def create_employee(
     user_in: UserCreate,
     operator_id: int = 1, # Placeholder for current user auth
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     # Check if emp_no already exists
-    existing = await db.execute(select(User).where(User.emp_no == user_in.emp_no))
+    existing = db.execute(select(User).where(User.emp_no == user_in.emp_no))
     existing_user = existing.scalar_one_or_none()
 
     if existing_user:
@@ -68,14 +68,14 @@ async def create_employee(
             existing_user.name = user_in.name
             existing_user.is_verified = False
             existing_user.password_hash = None
-            await record_audit_log(
+            record_audit_log(
                 db, operator_id, "UPDATE", "employees", existing_user.id,
                 before_value={"status": "RESIGNED"},
                 after_value=user_in.dict(),
                 reason="Re-registration (was resigned)"
             )
-            await db.commit()
-            result = await db.execute(
+            db.commit()
+            result = db.execute(
                 select(User).where(User.id == existing_user.id).options(joinedload(User.department_ref))
             )
             return result.scalar_one()
@@ -84,30 +84,30 @@ async def create_employee(
 
     new_user = User(**user_in.dict())
     db.add(new_user)
-    await db.flush() # Get ID
+    db.flush() # Get ID
 
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "CREATE", "employees", new_user.id,
         after_value=user_in.dict(),
         reason="Manual registration"
     )
 
-    await db.commit()
+    db.commit()
     # Refresh with relationship
-    result = await db.execute(
+    result = db.execute(
         select(User).where(User.id == new_user.id).options(joinedload(User.department_ref))
     )
     return result.scalar_one()
 
 @router.put("/{user_id}", response_model=UserResponse)
-async def update_employee(
+def update_employee(
     user_id: int,
     user_in: UserUpdate,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -125,42 +125,42 @@ async def update_employee(
     for key, value in update_data.items():
         setattr(user, key, value)
     
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "UPDATE", "employees", user.id,
         before_value=before_value,
         after_value=update_data,
         reason="Admin update"
     )
     
-    await db.commit()
+    db.commit()
     # Refresh with relationship
-    result = await db.execute(
+    result = db.execute(
         select(User).where(User.id == user.id).options(joinedload(User.department_ref))
     )
     return result.scalar_one()
 
 @router.delete("/{user_id}")
-async def delete_employee_soft(
+def delete_employee_soft(
     user_id: int,
     permanent: bool = Query(False, description="True면 DB에서 완전 삭제"),
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
 
     if permanent:
         # Hard delete: remove row from DB (same emp_no can be re-registered later)
-        await record_audit_log(
+        record_audit_log(
             db, operator_id, "DELETE", "employees", user.id,
             before_value={"emp_no": user.emp_no, "name": user.name, "status": user.status},
             reason="Admin permanent delete"
         )
-        await db.delete(user)
-        await db.commit()
+        db.delete(user)
+        db.commit()
         return {"message": "Employee permanently deleted", "deleted": True}
     else:
         # Soft delete: mark as RESIGNED (default)
@@ -170,24 +170,24 @@ async def delete_employee_soft(
         user.is_verified = False
         user.password_hash = None
 
-        await record_audit_log(
+        record_audit_log(
             db, operator_id, "RESIGN", "employees", user.id,
             before_value={"status": before_status},
             after_value={"status": "RESIGNED"},
             reason="Admin delete action (soft)"
         )
 
-        await db.commit()
+        db.commit()
         return {"message": "Employee marked as resigned"}
 
 @router.post("/{user_id}/reset-device")
-async def reset_device_auth(
+def reset_device_auth(
     user_id: int,
     operator_id: int = 1, # Placeholder
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -195,21 +195,21 @@ async def reset_device_auth(
     user.is_verified = False
     user.password_hash = None
     
-    await record_audit_log(
+    record_audit_log(
         db, operator_id, "RESET_DEVICE", "employees", user.id,
         before_value={},
         after_value={"is_verified": False, "password_hash": None},
         reason="Admin requested device reset"
     )
     
-    await db.commit()
+    db.commit()
     return {"message": "기기 인증 상태가 초기화되었습니다."}
 @router.post("/import")
-async def import_employees_excel(
+def import_employees_excel(
     file_content: bytes,
     company_id: int,
     operator_id: int = 1,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     import pandas as pd
@@ -228,11 +228,11 @@ async def import_employees_excel(
             raise HTTPException(status_code=400, detail=f"필수 컬럼이 누락되었습니다: {col}")
     
     # 1. Get all existing departments for this company
-    result = await db.execute(select(Department).where(Department.company_id == company_id))
+    result = db.execute(select(Department).where(Department.company_id == company_id))
     existing_depts = {d.name: d.id for d in result.scalars().all()}
     
     # 2. Get existing users by emp_no for skip/re-register
-    result = await db.execute(select(User))
+    result = db.execute(select(User))
     all_users = result.scalars().all()
     users_by_emp_no = {u.emp_no: u for u in all_users}
 
@@ -254,7 +254,7 @@ async def import_employees_excel(
         if dept_name not in existing_depts:
             new_dept = Department(company_id=company_id, code=dept_name, name=dept_name)
             db.add(new_dept)
-            await db.flush()
+            db.flush()
             existing_depts[dept_name] = new_dept.id
             new_depts_count += 1
         dept_id = existing_depts[dept_name]
@@ -288,7 +288,7 @@ async def import_employees_excel(
         users_by_emp_no[emp_no] = new_user
         success_count += 1
 
-    await db.commit()
+    db.commit()
 
     return {
         "success_count": success_count,

@@ -1,6 +1,6 @@
 """당일(한국시간) 식사인증 조회 API. 관리자 폰 PWA용. 식당관리자 로그인 필수."""
 from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import joinedload
 from datetime import date, datetime
@@ -14,9 +14,9 @@ router = APIRouter()
 
 
 @router.get("/today-meal-check")
-async def today_meal_check(
+def today_meal_check(
     q: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     admin: CafeteriaAdmin = Depends(get_current_admin)
 ):
     """한국시간 오늘 기준, 사원이름 또는 사번으로 식사인증 조회. 시간·식사종류 반환."""
@@ -45,7 +45,7 @@ async def today_meal_check(
         joinedload(MealLog.user),
         joinedload(MealLog.policy)
     ).order_by(MealLog.created_at.desc())
-    result = await db.execute(query)
+    result = db.execute(query)
     logs = result.scalars().all()
     out = []
     for log in logs:

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, func, and_
 from app.core.database import get_db
 from app.api.auth import get_current_admin
@@ -15,9 +15,9 @@ MEAL_TYPE_DISPLAY_ORDER = ("조식", "중식", "석식", "야식(심야)", "야�
 
 
 @router.get("/daily")
-async def get_daily_report(
+def get_daily_report(
     target_date: date,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     """일별 식사 집계."""
@@ -34,7 +34,7 @@ async def get_daily_report(
     ))\
      .group_by(MealPolicy.meal_type)
 
-    result = await db.execute(query)
+    result = db.execute(query)
     rows = [dict(row._asdict()) for row in result.all()]
     # 표시 순서: 조식 → 중식 → 석식 → 야식(심야) → 야식(새벽) → 기타
     order_map = {t: i for i, t in enumerate(MEAL_TYPE_DISPLAY_ORDER)}
@@ -42,10 +42,10 @@ async def get_daily_report(
     return rows
 
 @router.get("/monthly")
-async def get_monthly_report(
+def get_monthly_report(
     year: int,
     month: int,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     start_date = date(year, month, 1)
@@ -59,7 +59,7 @@ async def get_monthly_report(
         MealLog.created_at < end_naive,
         MealLog.is_void == False
     ))
-    result = await db.execute(query)
+    result = db.execute(query)
     logs = result.scalars().all()
 
     from collections import defaultdict
@@ -79,10 +79,10 @@ async def get_monthly_report(
     ]
 
 @router.get("/department")
-async def get_department_report(
+def get_department_report(
     start_date: date,
     end_date: date,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     start_naive, end_naive = kst_date_range_to_naive(start_date, end_date)
@@ -98,14 +98,14 @@ async def get_department_report(
         MealLog.is_void == False
      )).group_by(Department.name)
      
-    result = await db.execute(query)
+    result = db.execute(query)
     return [dict(row._asdict()) for row in result.all()]
 
 @router.get("/excel")
-async def get_excel_report(
+def get_excel_report(
     year: int,
     month: int,
-    db: AsyncSession = Depends(get_db),
+    db: Session = Depends(get_db),
     _admin=Depends(get_current_admin),
 ):
     import pandas as pd
@@ -127,7 +127,7 @@ async def get_excel_report(
         MealLog.is_void == False
     ))
     
-    result = await db.execute(query)
+    result = db.execute(query)
     logs = result.scalars().all()
     
     if not logs:

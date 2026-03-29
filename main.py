@@ -14,9 +14,7 @@ from app.models.models import SystemSetting  # Base.metadata에 등록 (startup�
 
 app = FastAPI(title="PWA Meal Auth System")
 
-# SQLAlchemy/aiomysql의 "connection open" 등이 stderr로 나가 Railway에서 Error로 표시되는 것 방지
 logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-logging.getLogger("aiomysql").setLevel(logging.WARNING)
 
 _logger = logging.getLogger("meal_auth")
 
@@ -26,13 +24,12 @@ async def startup():
     _logger.info("서버 올라옴 (Application started)")
     # Railway 등 배포 환경에서 repair_db 미실행 시 system_settings 테이블 자동 생성
     try:
-        async with engine.begin() as conn:
-            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn))
+        Base.metadata.create_all(bind=engine)
         _logger.info("DB 스키마 확인 완료 (system_settings 등)")
     except Exception as e:
         _logger.warning("DB 스키마 확인 중 예외 (무시하고 진행): %s", e)
     try:
-        await ensure_meal_logs_columns(engine)
+        ensure_meal_logs_columns(engine)
         _logger.info("DB 누락 컬럼 보강 완료 (meal_logs: path, qr_terminal_id, void 등)")
     except Exception as e:
         _logger.warning("DB 누락 컬럼 보강 실패: %s", e)

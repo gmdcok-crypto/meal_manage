@@ -17,7 +17,7 @@ class NoticeBody(BaseModel):
 
 
 @router.get("/notice")
-async def get_notice():
+def get_notice():
     """공지 내용 반환 (PWA·PC 앱 로드용)."""
     if not os.path.isfile(NOTICE_PATH):
         return {"content": ""}
@@ -29,7 +29,7 @@ async def get_notice():
 
 
 @router.put("/notice")
-async def save_notice(body: NoticeBody, _admin=Depends(get_current_admin)):
+def save_notice(body: NoticeBody, _admin=Depends(get_current_admin)):
     """공지 내용 저장 (PC 앱 저장 시 호출). 줄바꿈은 <br>로 저장해 PWA에서 그대로 표시."""
     try:
         os.makedirs(os.path.dirname(NOTICE_PATH), exist_ok=True)

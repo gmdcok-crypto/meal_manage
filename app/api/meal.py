@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import joinedload
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
 from jose import jwt, JWTError
 from typing import Optional
@@ -20,7 +20,7 @@ class QRScanBody(BaseModel):
     qr_data: Optional[str] = None  # 스캔한 QR 내용. 허용 목록 사용 시 필수
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -35,7 +35,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     except (JWTError, ValueError):
         raise credentials_exception
     
-    result = await db.execute(
+    result = db.execute(
         select(User).options(joinedload(User.department_ref)).where(User.id == user_id)
     )
     user = result.scalar_one_or_none()
@@ -54,16 +54,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     return user
 
 @router.get("/today", response_model=list[MealPolicyResponse])
-async def get_today_policies(db: AsyncSession = Depends(get_db)):
+def get_today_policies(db: Session = Depends(get_db)):
     # 금일 활성화된 식사 정책 조회
-    result = await db.execute(select(MealPolicy).where(MealPolicy.is_active == True))
+    result = db.execute(select(MealPolicy).where(MealPolicy.is_active == True))
     return result.scalars().all()
 
 @router.post("/qr-scan")
-async def process_qr_scan(
+def process_qr_scan(
     body: QRScanBody,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     def _norm_qr(s):
         if s is None or not isinstance(s, str):
@@ -79,7 +80,7 @@ async def process_qr_scan(
     )
 
     qr_val = _norm_qr(body.qr_data)
-    n_terminals = await count_terminals(db)
+    n_terminals = count_terminals(db)
     qr_terminal_id = None
     device_payload = None
 
@@ -87,14 +88,14 @@ async def process_qr_scan(
         # 터미널이 하나라도 있으면: 스캔 문자열이 등록된 qr_code와 정확히 일치해야 함
         if not qr_val:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="QR 코드를 스캔해 주세요.")
-        terminal = await find_terminal_by_qr(db, qr_val)
+        terminal = find_terminal_by_qr(db, qr_val)
         if not terminal:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="등록되지 않은 QR입니다. 인증할 수 없습니다.")
         qr_terminal_id = terminal.id
         device_payload = terminal_to_device_payload(terminal)
     else:
         # 레거시: system_settings 의 allowed_qr_list
-        device = await get_device_settings_from_db(db)
+        device = get_device_settings_from_db(db)
         allowed = device.get("allowed_qr_list") or []
         if isinstance(allowed, list) and len(allowed) > 0:
             if not qr_val:
@@ -110,7 +111,7 @@ async def process_qr_scan(
     log_time_kst = event_kst.time()
 
     # 식사 시간 범위 내에 있는 정책 검색 (로그에 저장될 시각 기준)
-    result = await db.execute(
+    result = db.execute(
         select(MealPolicy).where(
             and_(
                 MealPolicy.is_active == True,
@@ -139,27 +140,29 @@ async def process_qr_scan(
         created_at=event_kst.replace(tzinfo=None)  # 한국 시간 로컬 시각 그대로 저장 (naive)
     )
     db.add(new_log)
-    await db.commit()
-    await db.refresh(new_log)
+    db.commit()
+    db.refresh(new_log)
     
     # WebSocket Broadcast (실시간 갱신 + PC 앱에서 프린터/경광등 신호용)
     from app.api.websocket import manager
-    import asyncio
     meal_type_label = {"breakfast": "조식", "lunch": "중식", "dinner": "석식"}.get(
         (policy.meal_type or "").lower(), (policy.meal_type or "번외")
     )
     date_time_str = event_kst.strftime("%Y-%m-%d %H:%M") if event_kst else ""
-    asyncio.create_task(manager.broadcast({
-        "type": "MEAL_LOG_CREATED",
-        "data": {
-            "log_id": new_log.id,
-            "emp_no": current_user.emp_no,
-            "name": current_user.name,
-            "meal_type_label": meal_type_label,
-            "date_time_str": date_time_str,
-            "device": device_payload,
-        }
-    }))
+    background_tasks.add_task(
+        manager.broadcast,
+        {
+            "type": "MEAL_LOG_CREATED",
+            "data": {
+                "log_id": new_log.id,
+                "emp_no": current_user.emp_no,
+                "name": current_user.name,
+                "meal_type_label": meal_type_label,
+                "date_time_str": date_time_str,
+                "device": device_payload,
+            },
+        },
+    )
     
     return {
         "status": "success",
@@ -175,6 +178,6 @@ async def process_qr_scan(
     }
 
 @router.post("/pre-check")
-async def pre_check_meal(policy_id: int, guest_count: int = 0):
+def pre_check_meal(policy_id: int, guest_count: int = 0):
     # 식사 전 사전 인증 처리
     return {"status": "ARRIVED_PRE_CHECKED", "message": "Pre-check completed"}

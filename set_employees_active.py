@@ -10,20 +10,17 @@ status='ACTIVE', resigned_at=NULL 로 업데이트합니다.
 또는 DB 관리 툴에서 직접 SQL 실행:
   UPDATE employees SET status = 'ACTIVE', resigned_at = NULL;
 """
-import asyncio
 from sqlalchemy import update
 from app.core.database import SessionLocal
 from app.models.models import User
 
 
-async def main():
-    async with SessionLocal() as session:
-        result = await session.execute(
-            update(User).values(status="ACTIVE", resigned_at=None)
-        )
-        await session.commit()
+def main():
+    with SessionLocal() as session:
+        result = session.execute(update(User).values(status="ACTIVE", resigned_at=None))
+        session.commit()
         print(f"모든 사원을 재직(ACTIVE)으로 변경했습니다. (영향 행 수: {result.rowcount})")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

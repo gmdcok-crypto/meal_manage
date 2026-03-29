@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, update, delete
 from app.core.database import get_db
 from app.api.auth import get_current_admin
@@ -11,17 +11,17 @@ from typing import List, Optional
 router = APIRouter()
 
 @router.get("", response_model=List[DepartmentResponse])
-async def get_departments(company_id: Optional[int] = None, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
+def get_departments(company_id: Optional[int] = None, db: Session = Depends(get_db), _admin=Depends(get_current_admin)):
     query = select(Department)
     if company_id:
         query = query.where(Department.company_id == company_id)
-    result = await db.execute(query)
+    result = db.execute(query)
     return result.scalars().all()
 
 @router.post("", response_model=DepartmentResponse)
-async def create_department(dept: DepartmentCreate, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
+def create_department(dept: DepartmentCreate, db: Session = Depends(get_db), _admin=Depends(get_current_admin)):
     # Check if code already exists within the company
-    existing = await db.execute(
+    existing = db.execute(
         select(Department).where(
             Department.company_id == dept.company_id,
             Department.code == dept.code
@@ -32,19 +32,19 @@ async def create_department(dept: DepartmentCreate, db: AsyncSession = Depends(g
     
     new_dept = Department(**dept.dict())
     db.add(new_dept)
-    await db.flush()
+    db.flush()
     
-    await record_audit_log(
+    record_audit_log(
         db, 1, "CREATE", "departments", new_dept.id,
         after_value=dept.dict(), reason="Admin created department"
     )
-    await db.commit()
-    await db.refresh(new_dept)
+    db.commit()
+    db.refresh(new_dept)
     return new_dept
 
 @router.patch("/{dept_id}", response_model=DepartmentResponse)
-async def update_department(dept_id: int, dept_in: DepartmentUpdate, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
-    result = await db.execute(select(Department).where(Department.id == dept_id))
+def update_department(dept_id: int, dept_in: DepartmentUpdate, db: Session = Depends(get_db), _admin=Depends(get_current_admin)):
+    result = db.execute(select(Department).where(Department.id == dept_id))
     db_dept = result.scalar_one_or_none()
     if not db_dept:
         raise HTTPException(status_code=404, detail="Department not found")
@@ -59,27 +59,27 @@ async def update_department(dept_id: int, dept_in: DepartmentUpdate, db: AsyncSe
     for field, value in update_data.items():
         setattr(db_dept, field, value)
     
-    await record_audit_log(
+    record_audit_log(
         db, 1, "UPDATE", "departments", dept_id,
         before_value=before_value, after_value=update_data,
         reason="Admin updated department"
     )
-    await db.commit()
-    await db.refresh(db_dept)
+    db.commit()
+    db.refresh(db_dept)
     return db_dept
 
 @router.delete("/{dept_id}")
-async def delete_department(dept_id: int, db: AsyncSession = Depends(get_db), _admin=Depends(get_current_admin)):
-    result = await db.execute(select(Department).where(Department.id == dept_id))
+def delete_department(dept_id: int, db: Session = Depends(get_db), _admin=Depends(get_current_admin)):
+    result = db.execute(select(Department).where(Department.id == dept_id))
     db_dept = result.scalar_one_or_none()
     if not db_dept:
         raise HTTPException(status_code=404, detail="Department not found")
     
-    await record_audit_log(
+    record_audit_log(
         db, 1, "DELETE", "departments", dept_id,
         before_value={"code": db_dept.code, "name": db_dept.name},
         reason="Admin deleted department"
     )
-    await db.delete(db_dept)
-    await db.commit()
+    db.delete(db_dept)
+    db.commit()
     return {"status": "success"}
