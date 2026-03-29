@@ -127,22 +127,10 @@ async def create_manual_meal(
     await db.commit()
     await db.refresh(new_log)
     
-    # WebSocket Broadcast (실시간 갱신용)
+    # 수동 등록은 DB만 저장. 프린터·경광등 없음. 대시보드 숫자 갱신용 이벤트만 송신.
     from app.api.websocket import manager
-    from app.api.admin.settings import get_device_settings_from_db
-    from app.api.admin.terminals import legacy_device_payload_from_settings
     import asyncio
-    device = await get_device_settings_from_db(db)
-    device_payload = legacy_device_payload_from_settings(device, "")
-    asyncio.create_task(manager.broadcast({
-        "type": "MEAL_LOG_CREATED",
-        "data": {
-            "log_id": new_log.id,
-            "path": "MANUAL",
-            "user_id": user_id,
-            "device": device_payload,
-        }
-    }))
+    asyncio.create_task(manager.broadcast({"type": "STATS_REFRESH", "data": {}}))
     
     return new_log
 

@@ -3406,7 +3406,7 @@ class QrTerminalEditDialog(QDialog):
 
 
 class SettingsScreen(QWidget):
-    """설정: QR 터미널(구역별 프린터·경광등) + 기본 장치·레거시 허용 QR."""
+    """설정: QR 터미널(구역별 프린터·경광등)."""
     def __init__(self, api, main_win):
         super().__init__()
         self.api = api
@@ -3427,8 +3427,8 @@ class SettingsScreen(QWidget):
         layout.addWidget(header)
 
         hint = QLabel(
-            "QR 터미널을 한 건 이상 등록하면, PWA에서 스캔한 문자열이 아래 QR 코드와 정확히 일치할 때만 인증되며\n"
-            "해당 줄에 등록된 프린터·경광등으로만 출력됩니다. 터미널이 없으면 예전처럼 아래 「기본 장치」와 「허용 QR」을 사용합니다."
+            "PWA에서 스캔한 문자열이 아래 「QR 문자열」과 정확히 일치할 때만 인증되며, 해당 줄의 프린터·경광등으로 출력됩니다.\n"
+            "터미널이 하나도 없으면 서버는 예전 방식(시스템 설정의 허용 QR·기본 장치)을 씁니다. (PC에서는 여기서만 터미널을 관리합니다.)"
         )
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #94a3b8; font-size: 14px;")
@@ -3466,68 +3466,6 @@ class SettingsScreen(QWidget):
         tbtn.addWidget(self.btn_term_refresh)
         tbtn.addStretch()
         layout.addLayout(tbtn)
-
-        legacy_title = QLabel("기본 장치 (수동 원시데이터 등·WebSocket에 device 없을 때)")
-        legacy_title.setStyleSheet("font-weight: bold; font-size: 16px; color: #e2e8f0; margin-top: 8px;")
-        layout.addWidget(legacy_title)
-
-        printer_group = QGroupBox("식권 프린터 (빅솔론)")
-        printer_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
-        printer_layout = QFormLayout(printer_group)
-        self.printer_enabled = QCheckBox("프린터 사용")
-        self.printer_enabled.setStyleSheet("color: #f8fafc; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; font-weight: bold;")
-        self.printer_enabled.stateChanged.connect(self._on_printer_toggled)
-        printer_layout.addRow(self.printer_enabled)
-        self.printer_host = QLineEdit()
-        self.printer_host.setPlaceholderText("IP 주소 (예: 192.168.0.107)")
-        self.printer_host.setMinimumHeight(36)
-        printer_layout.addRow("IP:", self.printer_host)
-        self.printer_port = QSpinBox()
-        self.printer_port.setRange(1, 65535)
-        self.printer_port.setValue(9100)
-        self.printer_port.setMinimumHeight(36)
-        self.printer_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 16px;")
-        printer_layout.addRow("포트:", self.printer_port)
-        layout.addWidget(printer_group)
-
-        qlight_group = QGroupBox("경광등 (Q라이트)")
-        qlight_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
-        qlight_layout = QFormLayout(qlight_group)
-        self.qlight_enabled = QCheckBox("경광등 사용")
-        self.qlight_enabled.setStyleSheet("color: #f8fafc; font-family: 'Malgun Gothic', 'Segoe UI', sans-serif; font-weight: bold;")
-        self.qlight_enabled.stateChanged.connect(self._on_qlight_toggled)
-        qlight_layout.addRow(self.qlight_enabled)
-        self.qlight_host = QLineEdit()
-        self.qlight_host.setPlaceholderText("IP 주소 (예: 192.168.0.108)")
-        self.qlight_host.setMinimumHeight(36)
-        qlight_layout.addRow("IP:", self.qlight_host)
-        self.qlight_port = QSpinBox()
-        self.qlight_port.setRange(1, 65535)
-        self.qlight_port.setValue(20000)
-        self.qlight_port.setMinimumHeight(36)
-        self.qlight_port.setStyleSheet("background-color: #334155; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 12px; font-size: 16px;")
-        qlight_layout.addRow("포트:", self.qlight_port)
-        layout.addWidget(qlight_group)
-
-        qr_group = QGroupBox("허용 QR 코드 (터미널 0개일 때만 서버에서 사용)")
-        qr_group.setStyleSheet("QGroupBox { color: #f8fafc; font-weight: bold; font-size: 18px; }")
-        qr_layout = QVBoxLayout(qr_group)
-        self.allowed_qr_edit = QPlainTextEdit()
-        self.allowed_qr_edit.setPlaceholderText("한 줄에 QR 내용 하나씩. 터미널이 등록되면 이 목록은 사용되지 않습니다.")
-        self.allowed_qr_edit.setMinimumHeight(80)
-        self.allowed_qr_edit.setLineWrapMode(QPlainTextEdit.NoWrap)
-        self.allowed_qr_edit.setStyleSheet("background-color: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 8px; font-size: 16px;")
-        qr_layout.addWidget(self.allowed_qr_edit)
-        layout.addWidget(qr_group)
-
-        btn_row = QHBoxLayout()
-        save_btn = QPushButton("기본 장치·허용 QR 저장")
-        save_btn.setObjectName("PrimaryBtn")
-        save_btn.setMinimumHeight(44)
-        save_btn.clicked.connect(self.save_settings)
-        btn_row.addWidget(save_btn)
-        btn_row.addStretch()
-        layout.addLayout(btn_row)
         layout.addStretch()
 
         scroll.setWidget(inner)
@@ -3595,61 +3533,8 @@ class SettingsScreen(QWidget):
         else:
             QMessageBox.warning(self, "오류", "삭제에 실패했습니다.")
 
-    def _on_printer_toggled(self):
-        enabled = self.printer_enabled.isChecked()
-        self.printer_host.setEnabled(enabled)
-        self.printer_port.setEnabled(enabled)
-
-    def _on_qlight_toggled(self):
-        enabled = self.qlight_enabled.isChecked()
-        self.qlight_host.setEnabled(enabled)
-        self.qlight_port.setEnabled(enabled)
-
     def load_data(self):
         self.refresh_terminals()
-        data = self.api.get_device_settings() if self.api else None
-        if not data:
-            self.printer_enabled.setChecked(False)
-            self.printer_host.setText("")
-            self.printer_port.setValue(9100)
-            self.qlight_enabled.setChecked(False)
-            self.qlight_host.setText("")
-            self.qlight_port.setValue(20000)
-            self.allowed_qr_edit.setPlainText("")
-            self._on_printer_toggled()
-            self._on_qlight_toggled()
-            return
-        self.printer_enabled.setChecked(bool(data.get("printer_enabled")))
-        self.printer_host.setText((data.get("printer_host") or "").strip())
-        self.printer_port.setValue(int(data.get("printer_port") or 9100))
-        self.qlight_enabled.setChecked(bool(data.get("qlight_enabled")))
-        self.qlight_host.setText((data.get("qlight_host") or "").strip())
-        self.qlight_port.setValue(int(data.get("qlight_port") or 20000))
-        allowed_qr = data.get("allowed_qr_list") or []
-        if isinstance(allowed_qr, list):
-            self.allowed_qr_edit.setPlainText("\n".join(str(x).strip() for x in allowed_qr if x))
-        else:
-            self.allowed_qr_edit.setPlainText("")
-        self._on_printer_toggled()
-        self._on_qlight_toggled()
-
-    def save_settings(self):
-        allowed_text = (self.allowed_qr_edit.toPlainText() or "").strip()
-        allowed_list = [s.strip() for s in allowed_text.split("\n") if s.strip()]
-        payload = {
-            "printer_enabled": self.printer_enabled.isChecked(),
-            "printer_host": (self.printer_host.text() or "").strip(),
-            "printer_port": self.printer_port.value(),
-            "qlight_enabled": self.qlight_enabled.isChecked(),
-            "qlight_host": (self.qlight_host.text() or "").strip(),
-            "qlight_port": self.qlight_port.value(),
-            "allowed_qr_list": allowed_list,
-        }
-        ok, result = self.api.put_device_settings(payload)
-        if ok:
-            QMessageBox.information(self, "저장 완료", "기본 장치·허용 QR 목록이 저장되었습니다.")
-        else:
-            QMessageBox.warning(self, "저장 실패", result or "저장에 실패했습니다.")
 
 
 class MainWindow(QMainWindow):
@@ -3753,9 +3638,9 @@ class MainWindow(QMainWindow):
         msg_type = data.get("type")
         if msg_type:
             print(f"[WS] message type={msg_type}")
-        if msg_type in ["USER_VERIFIED", "MEAL_LOG_CREATED"]:
-            self.refresh_stats() # refresh active screen and dashboard
-        # PC 앱에서 프린터·경광등 신호 전송 (QR 인증 시 WebSocket으로 수신 후 로컬에서 출력)
+        if msg_type in ["USER_VERIFIED", "MEAL_LOG_CREATED", "STATS_REFRESH"]:
+            self.refresh_stats()  # refresh active screen and dashboard
+        # PC 앱에서 프린터·경광등 신호 전송 (QR 인증 등 MEAL_LOG_CREATED만, 수동 등록은 STATS_REFRESH)
         if msg_type == "MEAL_LOG_CREATED":
             self._trigger_devices_from_meal_data(data.get("data") or {})
 
@@ -3763,6 +3648,8 @@ class MainWindow(QMainWindow):
         """MEAL_LOG_CREATED 수신 시 설정에 따라 PC에서 프린터·경광등 신호 전송."""
         if not meal_data:
             print("[DEVICE] skip: empty meal_data")
+            return
+        if (meal_data.get("path") or "").upper() == "MANUAL":
             return
         device = meal_data.get("device")
         if not device and self.api:
