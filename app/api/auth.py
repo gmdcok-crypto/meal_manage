@@ -114,7 +114,7 @@ def verify_device(req: VerifyDeviceRequest, db: Session = Depends(get_db)):
         except Exception:
             pass
         
-        access_token = create_access_token(subject=user.id)
+        access_token = create_access_token(subject=user.id, permanent=True)
         return {
             "access_token": access_token,
             "token_type": "bearer",
