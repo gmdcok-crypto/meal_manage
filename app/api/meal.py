@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import joinedload
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_
 from jose import jwt, JWTError
 from typing import Optional
 from pydantic import BaseModel
@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.models import MealPolicy, User, MealLog
 from app.schemas.schemas import MealPolicyResponse
-from app.core.time_utils import utc_now, KST, kst_today, kst_date_range_to_naive
+from app.core.time_utils import utc_now, KST
 
 router = APIRouter(prefix="/meal", tags=["meal"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/verify_device")
@@ -131,22 +131,8 @@ def process_qr_scan(
             detail="식사 시간이 아닙니다. 식사 정책에 안내된 식사 시간에 이용해 주세요."
         )
 
-    # 같은 날·같은 식사 종류로 이미 저장된 인증이 있으면 DB에는 추가하되 프린터·경광등은 생략
-    day_start, day_end = kst_date_range_to_naive(kst_today(), kst_today())
-    prior_count = db.execute(
-        select(func.count())
-        .select_from(MealLog)
-        .where(
-            and_(
-                MealLog.user_id == current_user.id,
-                MealLog.policy_id == policy.id,
-                MealLog.is_void == False,
-                MealLog.created_at >= day_start,
-                MealLog.created_at < day_end,
-            )
-        )
-    ).scalar()
-    trigger_devices = int(prior_count or 0) == 0
+    # 매 QR 인증마다 프린터·경광등 트리거 (재스캔 포함)
+    trigger_devices = True
 
     new_log = MealLog(
         user_id=current_user.id,

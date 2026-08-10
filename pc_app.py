@@ -27,9 +27,65 @@ API_BASE_URL = _API_BASE
 # PWA 공지사항 저장 경로 (프로젝트 static 폴더)
 _MEAL_MANAGE_ROOT = os.path.dirname(os.path.abspath(__file__))
 NOTICE_HTML_PATH = os.path.join(_MEAL_MANAGE_ROOT, "static", "notice.html")
+_DOWN_ARROW_PNG = os.path.join(_MEAL_MANAGE_ROOT, "static", "images", "down_arrow.png")
 _ws_origin = _API_BASE.replace("https://", "wss://").replace("http://", "ws://").split("/api")[0]
 WS_URL = _ws_origin + "/api/admin/ws"
 API_TIMEOUT = 10.0
+
+
+def _qss_local_img(path: str) -> str:
+    """Qt 스타일시트용 로컬 이미지 경로 (Windows data: SVG 미지원 대비)."""
+    return '"' + os.path.abspath(path).replace("\\", "/") + '"'
+
+
+def _ensure_down_arrow_png() -> str:
+    """드롭다운 ▼ PNG가 없으면 생성 후 경로 반환."""
+    if os.path.isfile(_DOWN_ARROW_PNG) and os.path.getsize(_DOWN_ARROW_PNG) > 0:
+        return _qss_local_img(_DOWN_ARROW_PNG)
+    try:
+        from PyQt5.QtGui import QPainter, QBrush, QPolygon
+        from PyQt5.QtCore import QPoint
+        os.makedirs(os.path.dirname(_DOWN_ARROW_PNG), exist_ok=True)
+        pm = QPixmap(12, 12)
+        pm.fill(Qt.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(QColor("#f8fafc")))
+        painter.drawPolygon(QPolygon([QPoint(1, 3), QPoint(11, 3), QPoint(6, 10)]))
+        painter.end()
+        pm.save(_DOWN_ARROW_PNG)
+    except Exception:
+        pass
+    return _qss_local_img(_DOWN_ARROW_PNG)
+
+
+def _attach_dropdown_chevron(widget, width: int = 30) -> QLabel:
+    """스타일시트 화살표가 안 보일 때용 ▼ 오버레이 (클릭은 통과)."""
+    arrow = QLabel("▼", widget)
+    arrow.setObjectName("DropdownChevron")
+    arrow.setAlignment(Qt.AlignCenter)
+    arrow.setFixedWidth(width)
+    arrow.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+    arrow.setStyleSheet(
+        "QLabel#DropdownChevron { color: #f8fafc; background: transparent; "
+        "font-size: 11px; font-weight: bold; border: none; padding: 0; margin: 0; }"
+    )
+
+    def _place():
+        arrow.setGeometry(max(0, widget.width() - width), 0, width, widget.height())
+        arrow.raise_()
+
+    _orig_resize = widget.resizeEvent
+
+    def _on_resize(event):
+        if _orig_resize is not None:
+            _orig_resize(event)
+        _place()
+
+    widget.resizeEvent = _on_resize  # type: ignore[method-assign]
+    QTimer.singleShot(0, _place)
+    return arrow
 # 로그인: Railway 관리 API(/policies 등)는 Bearer(admin:*) 토큰 필수 → 기본은 로그인 창 표시.
 # 개발용으로만 로그인 생략: MEAL_PC_SKIP_LOGIN=1 (true/yes) — 토큰 없음으로 대부분 관리 메뉴는 401 남.
 PC_APP_SKIP_LOGIN = os.environ.get("MEAL_PC_SKIP_LOGIN", "").strip().lower() in ("1", "true", "yes")
@@ -285,7 +341,7 @@ QDateEdit { background-color: #1e293b; border: 1px solid #475569; border-radius:
 QDateEdit::up-button { subcontrol-origin: border; subcontrol-position: top right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top-right-radius: 8px; background-color: #334155; }
 QDateEdit::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 20px; height: 16px; border-left: 1px solid #475569; border-top: 1px solid #475569; border-bottom-right-radius: 8px; background-color: #334155; }
 QDateEdit::drop-down { subcontrol-origin: border; subcontrol-position: top right; width: 26px; border-left: 1px solid #475569; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background-color: #334155; }
-QDateEdit::down-arrow { image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIgdmlld0JveD0iMCAwIDEwIDEwIj48cGF0aCBkPSJNMSAzIEg5IEw1IDggWiIgZmlsbD0iI2Y4ZmFmYyIvPjwvc3ZnPg=="); width: 12px; height: 12px; }
+QDateEdit::down-arrow { image: url(__DOWN_ARROW__); width: 12px; height: 12px; }
 QCalendarWidget QWidget { background-color: #1e293b; color: #f8fafc; font-family: 'Malgun Gothic'; }
 QCalendarWidget QAbstractItemView:enabled { background-color: #1e293b; color: #f8fafc; selection-background-color: #6366f1; selection-color: white; }
 QCalendarWidget QToolButton { color: #f8fafc; background-color: #334155; border-radius: 4px; font-weight: bold; }
@@ -311,11 +367,16 @@ QPushButton#SettingsActSecondary { background-color: #64748b; color: #f8fafc; bo
 QPushButton#SettingsActSecondary:hover { background-color: #475569; }
 QPushButton#SettingsActDanger { background-color: #ef4444; color: white; border-radius: 8px; padding: 8px 10px; font-weight: bold; font-size: 17px; min-height: 40px; min-width: 52px; font-family: 'Malgun Gothic'; }
 QPushButton#SettingsActDanger:hover { background-color: #dc2626; }
-QComboBox { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 15px; font-size: 21px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QComboBox { background-color: #1e293b; border: 1px solid #475569; border-radius: 8px; color: #f8fafc; padding: 5px 30px 5px 15px; font-size: 21px; height: 40px; font-weight: bold; font-family: 'Malgun Gothic'; }
+QComboBox::drop-down { subcontrol-origin: border; subcontrol-position: top right; width: 26px; border-left: 1px solid #475569; border-top-right-radius: 8px; border-bottom-right-radius: 8px; background-color: #334155; }
+QComboBox::down-arrow { image: url(__DOWN_ARROW__); width: 12px; height: 12px; }
 QComboBox QAbstractItemView { background-color: #1e293b; color: #f8fafc; selection-background-color: #3b82f6; border: 1px solid #334155; outline: none; }
 QComboBox QAbstractItemView::item { min-height: 35px; padding: 2px 10px; }
 QLabel#InputLabel { color: #ffffff; font-weight: bold; font-family: 'Malgun Gothic'; font-size: 18px; }
 """
+
+# PyQt5(Windows)는 data: SVG를 스타일시트에서 못 쓰는 경우가 많아 PNG 파일 경로로 치환
+QSS = QSS.replace("__DOWN_ARROW__", _ensure_down_arrow_png())
 
 
 def _settings_cm_to_px(cm: float) -> int:
@@ -2109,16 +2170,31 @@ class RawDataRecordAddDialog(QDialog):
                 border: 1px solid #475569;
                 border-radius: 8px;
                 color: #f8fafc;
+                padding-left: 10px;
+                padding-right: 34px;
                 min-height: 52px;
                 height: 52px;
                 font-size: 19px;
                 font-weight: bold;
                 font-family: 'Malgun Gothic', 'Segoe UI', sans-serif;
             }
+            #RawDataRecordAddDialog QDateEdit::drop-down,
             #RawDataRecordAddDialog QComboBox::drop-down {
-                border-left: 1px solid #475569;
+                subcontrol-origin: border;
+                subcontrol-position: top right;
                 width: 30px;
+                border-left: 1px solid #475569;
+                border-top-right-radius: 8px;
+                border-bottom-right-radius: 8px;
                 background-color: #334155;
+            }
+            #RawDataRecordAddDialog QDateEdit::down-arrow,
+            #RawDataRecordAddDialog QComboBox::down-arrow {
+                image: url("""
+            + _ensure_down_arrow_png()
+            + """);
+                width: 12px;
+                height: 12px;
             }
             """
         )
@@ -2151,6 +2227,7 @@ class RawDataRecordAddDialog(QDialog):
         self.dlg_date = QDateEdit()
         self.dlg_date.setCalendarPopup(True)
         self.dlg_date.setDate(QDate.currentDate())
+        _attach_dropdown_chevron(self.dlg_date)
         date_hint = QLabel("※ 시간은 선택한 식사 종류에 따라 자동 적용됩니다.")
         date_hint.setStyleSheet("color: #94a3b8; font-size: 12px;")
         lay.addWidget(date_label)
@@ -2163,6 +2240,7 @@ class RawDataRecordAddDialog(QDialog):
         self.dlg_policy_combo.addItem("선택하세요", None)
         for p in raw_screen.policies_list or []:
             self.dlg_policy_combo.addItem(p["meal_type"], p["id"])
+        _attach_dropdown_chevron(self.dlg_policy_combo)
         lay.addWidget(policy_label)
         lay.addWidget(self.dlg_policy_combo)
 
@@ -2374,37 +2452,54 @@ class RawDataScreen(QWidget):
             return
         self.table.setSortingEnabled(False)
         self.table.setUpdatesEnabled(False)
+
+        def _created_key(row):
+            s = str(row.get("created_at") or "").strip().replace("Z", "")
+            if " " in s and "T" not in s:
+                s = s.replace(" ", "T", 1)
+            return s[:19]
+
+        # 가장 먼저 인증한 건 No=1, 그다음 2… (시간 빠른 순)
+        data = sorted([r for r in data if isinstance(r, dict)], key=_created_key)
         self.table.setRowCount(len(data))
         self.full_data = data
         for i, row in enumerate(data):
-            if not isinstance(row, dict): continue
-            created_at = row.get("created_at", "")
-            date_part = created_at.split("T")[0]
-            time_part = created_at.split("T")[-1][:8]
-            
-            # Row Number (No) - Use numeric data for sorting
+            created_at = str(row.get("created_at") or "")
+            if "T" in created_at:
+                date_part = created_at.split("T")[0]
+                time_part = created_at.split("T")[-1][:8]
+            elif " " in created_at:
+                date_part, _, rest = created_at.partition(" ")
+                time_part = rest[:8]
+            else:
+                date_part = created_at[:10]
+                time_part = ""
+
+            # Row Number (No): 인증 시각 순 1,2,3…
             item_no = QTableWidgetItem()
             item_no.setData(Qt.DisplayRole, i + 1)
             row_id = row.get("id")
             item_no.setData(Qt.UserRole, row_id)
-            
+
             self.table.setItem(i, 0, item_no)
             self.table.setItem(i, 1, QTableWidgetItem(date_part))
             self.table.setItem(i, 2, QTableWidgetItem(time_part))
             self.table.setItem(i, 3, QTableWidgetItem(str(row.get("user", {}).get("name", ""))))
             self.table.setItem(i, 4, QTableWidgetItem(str(row.get("user", {}).get("emp_no", ""))))
-            
+
             # 식사종류: 서버에서 내려준 해당 로그의 policy.meal_type 사용 (시간 재계산 시 번외로 바뀌는 현상 방지)
             meal_type = str(row.get("policy", {}).get("meal_type", "") or "번외")
             item_type = QTableWidgetItem(meal_type)
             if meal_type == "번외":
                 item_type.setForeground(QColor("#94a3b8")) # Gray color for extra
             self.table.setItem(i, 5, item_type)
-            
+
             self.table.setItem(i, 6, QTableWidgetItem(str(row.get("path", ""))))
             status = "취소됨" if row.get("is_void") else "정상"
             self.table.setItem(i, 7, QTableWidgetItem(status))
         self.table.setUpdatesEnabled(True)
+        # 이전 내림차순 정렬 상태가 다시 적용되지 않도록 No 오름차순으로 고정
+        self.table.sortByColumn(0, Qt.AscendingOrder)
         self.table.setSortingEnabled(True)
 
     def load_policies(self):
@@ -3770,7 +3865,7 @@ class SettingsScreen(QWidget):
         self.auth_qr_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.auth_qr_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.auth_qr_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Fixed)
-        self.auth_qr_table.setColumnWidth(2, 52)
+        self.auth_qr_table.setColumnWidth(2, 52 + _settings_cm_to_px(0.5))
         self.auth_qr_table.setMinimumHeight(self._st_terminal_table_h)
         self.auth_qr_table.setFixedWidth(self._st_pq_table_w)
         self.auth_qr_table.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
@@ -4084,7 +4179,7 @@ class SettingsScreen(QWidget):
         table.setColumnWidth(2, 80)
         hdr.setSectionResizeMode(3, QHeaderView.Stretch)
         hdr.setSectionResizeMode(4, QHeaderView.Fixed)
-        table.setColumnWidth(4, 52)
+        table.setColumnWidth(4, 52 + _settings_cm_to_px(0.5))
         table.setFixedWidth(self._st_pq_table_w)
         rh = table.verticalHeader().defaultSectionSize()
         hh = 40
